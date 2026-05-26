@@ -370,7 +370,10 @@ function Get-QualityGrade {
 function Write-HtmlReport {
   param($Before, $After)
   $hasAfter = $null -ne $After
-  $q = Get-QualityGrade $Before
+  # Headline grade = the CURRENT state: the after-fix grade when we have one,
+  # otherwise the measured grade. (Don't show a red "before" grade on a report
+  # that already improved things.)
+  $q = if ($hasAfter) { Get-QualityGrade $After } else { Get-QualityGrade $Before }
   $gradeColors = @{ 'A+' = '#22c55e'; 'A' = '#22c55e'; 'B' = '#84cc16'; 'C' = '#eab308'; 'D' = '#f97316'; 'F' = '#ef4444' }
   $gColor = $gradeColors[$q.Grade]; if (-not $gColor) { $gColor = '#9ca3af' }
 
