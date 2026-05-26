@@ -76,6 +76,10 @@ $ProgressPreference = 'SilentlyContinue'
 # PS 5.1 defaults to old TLS that Cloudflare rejects — force TLS 1.2 so the
 # speed test (https) actually connects.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+# .NET Framework caps outbound connections per host at 2 by default, which would
+# silently throttle the parallel download + bufferbloat tests to 2 streams. Lift
+# it so "4 parallel streams" actually means 4.
+try { [Net.ServicePointManager]::DefaultConnectionLimit = 32 } catch {}
 
 # Reliable script folder: $PSScriptRoot is set when run as a .ps1; fall back
 # sensibly if invoked oddly.
@@ -126,10 +130,18 @@ function Test-Ping {
     } catch { $loss++ }
     Start-Sleep -Milliseconds 120
   }
+  # Jitter = average swing between consecutive replies. High jitter (even with a
+  # low average) is what makes calls/games stutter, so it's worth surfacing.
+  $jitter = $null
+  if ($lat.Count -ge 2) {
+    $diffs = for ($j = 1; $j -lt $lat.Count; $j++) { [math]::Abs($lat[$j] - $lat[$j-1]) }
+    $jitter = [math]::Round(($diffs | Measure-Object -Average).Average, 1)
+  }
   [pscustomobject]@{
     Target = $Target
     AvgMs  = if ($lat.Count) { [math]::Round(($lat | Measure-Object -Average).Average, 1) } else { $null }
     MaxMs  = if ($lat.Count) { ($lat | Measure-Object -Maximum).Maximum } else { $null }
+    JitterMs = $jitter
     LossPct= [math]::Round($loss / $Count * 100, 0)
   }
 }
@@ -209,6 +221,53 @@ function Test-Upload {
   finally { if ($client) { $client.Dispose() } }
 }
 
+function Test-Bufferbloat {
+  # Bufferbloat = how much your ping spikes when the link is busy. It's the #1
+  # cause of lag in games/calls even on "fast" connections: a big download
+  # fills an oversized router buffer and every other packet waits behind it.
+  # We measure idle ping, then saturate the link (parallel down + up) and ping
+  # under load. The INCREASE is what matters; we grade it like the well-known
+  # bufferbloat tests (A+ = barely moves, F = falls apart under load).
+  param([string]$Target = '1.1.1.1', [int]$DurationSec = 8, [int]$Streams = 4)
+  $dlUrl = 'https://speed.cloudflare.com/__down?bytes=10000000'   # 10 MB chunks
+  $p = New-Object System.Net.NetworkInformation.Ping
+
+  # 1) Idle baseline.
+  $idle = @()
+  for ($i = 0; $i -lt 12; $i++) {
+    try { $r = $p.Send($Target, 1000); if ($r.Status -eq 'Success') { $idle += $r.RoundtripTime } } catch {}
+    Start-Sleep -Milliseconds 60
+  }
+  if (-not $idle.Count) { return $null }
+  $idleAvg = [math]::Round(($idle | Measure-Object -Average).Average, 1)
+
+  # 2) Saturate the link, replenishing finished transfers so the pipe stays full
+  #    for the whole window regardless of line speed.
+  $client = New-HttpClient -TimeoutSec ($DurationSec + 25)
+  $loaded = @()
+  try {
+    $dl = New-Object System.Collections.ArrayList
+    for ($s = 0; $s -lt $Streams; $s++) { [void]$dl.Add($client.GetByteArrayAsync($dlUrl)) }
+    $upData = New-Object byte[] 8000000
+    $up = $client.PostAsync('https://speed.cloudflare.com/__up', (New-Object System.Net.Http.ByteArrayContent (, $upData)))
+
+    $deadline = (Get-Date).AddSeconds($DurationSec)
+    while ((Get-Date) -lt $deadline) {
+      for ($i = 0; $i -lt $dl.Count; $i++) { if ($dl[$i].IsCompleted) { $dl[$i] = $client.GetByteArrayAsync($dlUrl) } }
+      if ($up.IsCompleted) { $up = $client.PostAsync('https://speed.cloudflare.com/__up', (New-Object System.Net.Http.ByteArrayContent (, $upData))) }
+      try { $r = $p.Send($Target, 1000); if ($r.Status -eq 'Success') { $loaded += $r.RoundtripTime } } catch {}
+      Start-Sleep -Milliseconds 50
+    }
+  } catch { return $null }
+  finally { try { $client.CancelPendingRequests() } catch {}; if ($client) { $client.Dispose() } }
+
+  if (-not $loaded.Count) { return $null }
+  $loadedAvg = [math]::Round(($loaded | Measure-Object -Average).Average, 1)
+  $inc = [math]::Round($loadedAvg - $idleAvg, 1)
+  $grade = if ($inc -lt 5) { 'A+' } elseif ($inc -lt 30) { 'A' } elseif ($inc -lt 60) { 'B' } elseif ($inc -lt 100) { 'C' } elseif ($inc -lt 200) { 'D' } else { 'F' }
+  [pscustomobject]@{ IdleMs = $idleAvg; LoadedMs = $loadedAvg; IncreaseMs = $inc; Grade = $grade }
+}
+
 function Get-OptimalMtu {
   # Largest non-fragmented payload to 1.1.1.1, + 28 bytes of IP/ICMP headers.
   param([string]$Target = '1.1.1.1')
@@ -274,6 +333,10 @@ function Show-BeforeAfter {
   Say ("  Download : " + (_d $before.Download $after.Download 'Mbps' $false)) 'White'
   Say ("  Upload   : " + (_d $before.Upload $after.Upload 'Mbps' $false)) 'White'
   Say ("  Ping     : " + (_d $before.Ping.AvgMs $after.Ping.AvgMs 'ms' $true)) 'White'
+  Say ("  Jitter   : " + (_d $before.Ping.JitterMs $after.Ping.JitterMs 'ms' $true)) 'White'
+  if ($before.Bufferbloat -and $after.Bufferbloat) {
+    Say ("  Bufferbloat: " + (_d $before.Bufferbloat.IncreaseMs $after.Bufferbloat.IncreaseMs 'ms under load' $true) + ("  (grade {0} -> {1})" -f $before.Bufferbloat.Grade, $after.Bufferbloat.Grade)) 'White'
+  }
   $bDns = ($before.Dns.Values | Where-Object { $_ } | Measure-Object -Minimum).Minimum
   $aDns = ($after.Dns.Values  | Where-Object { $_ } | Measure-Object -Minimum).Minimum
   Say ("  DNS      : " + (_d $bDns $aDns 'ms' $true)) 'White'
@@ -379,7 +442,10 @@ function Run-Diagnostics {
   if ($ad) { Say ("  Adapter : {0}  ({1}, link {2})" -f $ad.Name, $ad.InterfaceDescription, $ad.LinkSpeed) }
 
   $ping = Test-Ping
-  if ($ping.AvgMs -ne $null) { Say ("  Ping    : {0} ms avg, {1} ms max, {2}% loss  -> 1.1.1.1" -f $ping.AvgMs,$ping.MaxMs,$ping.LossPct) }
+  if ($ping.AvgMs -ne $null) {
+    $jit = if ($ping.JitterMs -ne $null) { ", {0} ms jitter" -f $ping.JitterMs } else { '' }
+    Say ("  Ping    : {0} ms avg, {1} ms max{2}, {3}% loss  -> 1.1.1.1" -f $ping.AvgMs,$ping.MaxMs,$jit,$ping.LossPct)
+  }
   else { Bad "Ping: no response from 1.1.1.1" }
 
   Say "  Download: testing (4 parallel streams from Cloudflare)..."
@@ -391,6 +457,13 @@ function Run-Diagnostics {
   $ul = Test-Upload
   if ($ul) { Say ("  Upload  : {0} Mbps" -f $ul) 'White' } else { Warn "Upload test failed (or blocked)" }
 
+  Say "  Bufferbloat: testing latency under load (~8s)..."
+  $bloat = Test-Bufferbloat
+  if ($bloat) {
+    $col = if ($bloat.Grade -in 'A+','A') { 'Green' } elseif ($bloat.Grade -in 'B','C') { 'Yellow' } else { 'Red' }
+    Say ("  Bufferbloat: grade {0}  (idle {1} ms -> {2} ms under load, +{3} ms)" -f $bloat.Grade,$bloat.IdleMs,$bloat.LoadedMs,$bloat.IncreaseMs) $col
+  } else { Warn "Bufferbloat test failed (or blocked)" }
+
   Say "  DNS     : timing resolvers (lower = faster)..."
   $dnsResults = @{}
   foreach ($k in $DnsCandidates.Keys) {
@@ -398,7 +471,7 @@ function Run-Diagnostics {
     $dnsResults[$k] = $avg
     Say ("           {0,-16} {1}" -f $k, ($(if ($avg) { "$avg ms" } else { 'failed' })))
   }
-  [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Dns = $dnsResults }
+  [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Bufferbloat = $bloat; Dns = $dnsResults }
 }
 
 # ── REVERT ───────────────────────────────────────────────────────────────────
@@ -503,6 +576,9 @@ if ($Auto) {
   # Things a script genuinely can't fix — report honestly.
   if ($before.Ping.LossPct -ge 2) { Warn "Packet loss ~$($before.Ping.LossPct)% — usually Wi-Fi signal or ISP. Move closer to the router or go wired." }
   if ($before.Ping.AvgMs -ne $null -and $before.Ping.AvgMs -gt 80) { Warn "High ping ($($before.Ping.AvgMs) ms) — mostly distance/ISP; the fixes above help a little." }
+  if ($before.Bufferbloat -and $before.Bufferbloat.Grade -in 'C','D','F') {
+    Warn "Bufferbloat grade $($before.Bufferbloat.Grade) (ping jumps +$($before.Bufferbloat.IncreaseMs) ms under load) — this causes lag spikes in games/calls. Windows can't fix it; enable SQM/QoS (look for 'Smart Queue', 'Cake', or 'Bufferbloat') on your ROUTER, or cap your speeds slightly below the line rate."
+  }
 
   if ($fixes.Count -eq 0) {
     Head "Nothing to fix"

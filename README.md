@@ -9,10 +9,15 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 A safe PowerShell script that **measures** your connection (download & upload
-speed, ping, packet loss, DNS time) and applies real, proven speed/stability
-tweaks — then shows you the before/after. The download test uses **4 parallel
-streams** so it reflects your real line speed (a single stream undercounts fast
-connections).
+speed, ping, jitter, **bufferbloat**, packet loss, DNS time) and applies real,
+proven speed/stability tweaks — then shows you the before/after. The download
+test uses **4 parallel streams** so it reflects your real line speed (a single
+stream undercounts fast connections).
+
+> **Bufferbloat** is the standout metric: it measures how much your ping spikes
+> while the link is busy. It's the #1 cause of lag in games/calls even on fast
+> connections, and most speed tests never show it. You get a letter grade
+> (A+ → F) like the well-known bufferbloat tests.
 
 ## ⚡ Recommended: Auto mode
 `Auto` does it all in one shot — **reads your speed, finds only the things that
