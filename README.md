@@ -2,6 +2,12 @@
 
 ![Internet Optimizer](banner.svg)
 
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?logo=windows&logoColor=white)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207-5391FE?logo=powershell&logoColor=white)
+![Safe](https://img.shields.io/badge/safe-measure%20%E2%86%92%20backup%20%E2%86%92%20revert-22c55e)
+![Dependencies](https://img.shields.io/badge/dependencies-none-success)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
 A safe PowerShell script that **measures** your connection (download & upload
 speed, ping, packet loss, DNS time) and applies real, proven speed/stability
 tweaks — then shows you the before/after. The download test uses **4 parallel
@@ -17,6 +23,10 @@ touch anything that's already fine, and it backs up before every change.
 powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Auto
 ```
 (or just double-click `Run.bat` and pick **[1] AUTO**)
+
+## How it works
+
+![How it works](how-it-works.svg)
 
 > It can't make your internet faster than your ISP plan. What it does is remove
 > the things that keep Windows *below* that ceiling: slow DNS, Windows' built-in

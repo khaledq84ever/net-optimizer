@@ -1,45 +1,83 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" font-family="'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" font-family="'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b1220"/>
-      <stop offset="1" stop-color="#0f1b34"/>
+      <stop offset="0" stop-color="#0a1120"/>
+      <stop offset="0.55" stop-color="#0d1a30"/>
+      <stop offset="1" stop-color="#0a1426"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e2e8f0"/>
+      <stop offset="1" stop-color="#a5f3fc"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
     </filter>
   </defs>
 
-  <rect width="1200" height="460" rx="18" fill="url(#bg)"/>
-  <rect x="1" y="1" width="1198" height="458" rx="18" fill="none" stroke="#1e293b" stroke-width="2"/>
+  <rect width="1280" height="520" rx="22" fill="url(#bg)"/>
+  <rect x="1.5" y="1.5" width="1277" height="517" rx="22" fill="none" stroke="#1e2d4a" stroke-width="2"/>
 
-  <!-- signal bars mark -->
-  <g transform="translate(64,70)" filter="url(#glow)">
-    <rect x="0"  y="48" width="16" height="22" rx="3" fill="url(#accent)" opacity="0.55"/>
-    <rect x="24" y="34" width="16" height="36" rx="3" fill="url(#accent)" opacity="0.7"/>
-    <rect x="48" y="18" width="16" height="52" rx="3" fill="url(#accent)" opacity="0.85"/>
-    <rect x="72" y="0"  width="16" height="70" rx="3" fill="url(#accent)"/>
+  <!-- subtle network motif, top-right -->
+  <g stroke="#1d3357" stroke-width="1.5" fill="#1d3357" opacity="0.7">
+    <line x1="1040" y1="70" x2="1130" y2="120"/><line x1="1130" y1="120" x2="1190" y2="64"/>
+    <line x1="1130" y1="120" x2="1170" y2="180"/><line x1="1040" y1="70" x2="1070" y2="150"/>
+    <circle cx="1040" cy="70" r="5"/><circle cx="1130" cy="120" r="6"/><circle cx="1190" cy="64" r="5"/>
+    <circle cx="1170" cy="180" r="5"/><circle cx="1070" cy="150" r="4"/>
   </g>
 
-  <text x="180" y="92" fill="#f1f5f9" font-size="52" font-weight="700">Internet Optimizer</text>
-  <text x="182" y="130" fill="#7dd3fc" font-size="23" font-weight="600">Measure → Auto-detect → Fix only what's broken → Verify</text>
-  <text x="182" y="160" fill="#94a3b8" font-size="18">Windows · PowerShell · safe by design · fully revertible</text>
-
-  <!-- terminal mockup -->
-  <g transform="translate(64,196)">
-    <rect width="1072" height="232" rx="12" fill="#0a0f1c" stroke="#1e293b" stroke-width="1.5"/>
-    <circle cx="26" cy="26" r="7" fill="#ef4444"/><circle cx="50" cy="26" r="7" fill="#f59e0b"/><circle cx="74" cy="26" r="7" fill="#22c55e"/>
-    <text x="110" y="31" fill="#64748b" font-size="15" font-family="Consolas,'Courier New',monospace">Optimize-Internet.ps1  -Auto</text>
-    <g font-family="Consolas,'Courier New',monospace" font-size="17">
-      <text x="28" y="74"  fill="#38bdf8">── Auto-detecting problems ──</text>
-      <text x="28" y="102" fill="#22c55e">[OK]  TCP autotuning already normal</text>
-      <text x="28" y="128" fill="#f59e0b">[!]   Slow DNS, Network throttle ON, Adapter power-saving ON</text>
-      <text x="28" y="156" fill="#22c55e">[OK]  Fixed: Slow DNS         ~58 ms → Cloudflare ~11 ms</text>
-      <text x="28" y="182" fill="#22c55e">[OK]  Fixed: Network throttle &#160;NetworkThrottlingIndex → off</text>
-      <text x="28" y="208" fill="#e2e8f0" font-size="16">DL <tspan fill="#22d3ee" font-weight="700">41→93</tspan>  UL <tspan fill="#22d3ee" font-weight="700">9→18 Mbps</tspan>   Ping <tspan fill="#22d3ee" font-weight="700">37→21 ms</tspan>   DNS <tspan fill="#22d3ee" font-weight="700">58→11 ms</tspan></text>
-    </g>
+  <!-- logo mark -->
+  <g filter="url(#soft)">
+    <rect x="56" y="60" width="96" height="96" rx="22" fill="url(#mark)"/>
   </g>
+  <g transform="translate(56,60)" filter="url(#glow)">
+    <rect x="18" y="56" width="13" height="26" rx="3" fill="#0a1120" opacity="0.85"/>
+    <rect x="37" y="44" width="13" height="38" rx="3" fill="#0a1120" opacity="0.9"/>
+    <rect x="56" y="30" width="13" height="52" rx="3" fill="#0a1120" opacity="0.95"/>
+    <rect x="75" y="16" width="13" height="66" rx="3" fill="#0a1120"/>
+  </g>
+
+  <!-- title block -->
+  <text x="180" y="108" fill="url(#title)" font-size="56" font-weight="800" letter-spacing="-0.5">Internet Optimizer</text>
+  <text x="183" y="146" fill="#5eead4" font-size="22" font-weight="600">Measure  →  Auto-detect  →  Fix only what's broken  →  Verify</text>
+
+  <!-- feature chips -->
+  <g font-size="14" font-weight="600" letter-spacing="0.6">
+    <g transform="translate(183,170)"><rect width="132" height="32" rx="16" fill="#11233f" stroke="#27466b"/><circle cx="18" cy="16" r="4" fill="#22d3ee"/><text x="32" y="21" fill="#cbd5e1">AUTO-FIX</text></g>
+    <g transform="translate(325,170)"><rect width="168" height="32" rx="16" fill="#11233f" stroke="#27466b"/><circle cx="18" cy="16" r="4" fill="#5eead4"/><text x="32" y="21" fill="#cbd5e1">BEFORE / AFTER</text></g>
+    <g transform="translate(503,170)"><rect width="150" height="32" rx="16" fill="#11233f" stroke="#27466b"/><circle cx="18" cy="16" r="4" fill="#22c55e"/><text x="32" y="21" fill="#cbd5e1">REVERTIBLE</text></g>
+    <g transform="translate(663,170)"><rect width="182" height="32" rx="16" fill="#11233f" stroke="#27466b"/><circle cx="18" cy="16" r="4" fill="#60a5fa"/><text x="32" y="21" fill="#cbd5e1">WINDOWS 10 / 11</text></g>
+  </g>
+
+  <!-- terminal card -->
+  <g filter="url(#soft)">
+    <rect x="56" y="240" width="1168" height="232" rx="14" fill="#080d18" stroke="#1e2d4a" stroke-width="1.5"/>
+  </g>
+  <rect x="56" y="240" width="1168" height="40" rx="14" fill="#0d1626"/>
+  <rect x="56" y="266" width="1168" height="14" fill="#0d1626"/>
+  <circle cx="82" cy="260" r="7" fill="#ef4444"/><circle cx="106" cy="260" r="7" fill="#f59e0b"/><circle cx="130" cy="260" r="7" fill="#22c55e"/>
+  <text x="160" y="265" fill="#5b6b86" font-size="15" font-family="Consolas,'Courier New',monospace">PS&#62; .\Optimize-Internet.ps1  -Auto</text>
+
+  <g font-family="Consolas,'Courier New',monospace" font-size="17">
+    <text x="84" y="322" fill="#38bdf8">── Auto-detecting problems ──</text>
+    <text x="84" y="352" fill="#22c55e">[OK]  TCP autotuning already normal</text>
+    <text x="84" y="380" fill="#fbbf24">[!]   Slow DNS  ·  Network throttle ON  ·  Wi-Fi power-saving ON</text>
+    <text x="84" y="408" fill="#22c55e">[OK]  Fixed 3 issues  ·  backup saved  ·  re-testing…</text>
+  </g>
+
+  <!-- before/after metric row -->
+  <g transform="translate(84,432)" font-family="Consolas,'Courier New',monospace" font-size="17">
+    <text x="0"   y="16" fill="#94a3b8">Download <tspan fill="#22d3ee" font-weight="700">41 → 96</tspan></text>
+    <text x="250" y="16" fill="#94a3b8">Upload <tspan fill="#22d3ee" font-weight="700">9 → 19 Mbps</tspan></text>
+    <text x="560" y="16" fill="#94a3b8">Ping <tspan fill="#22d3ee" font-weight="700">37 → 21 ms</tspan></text>
+    <text x="820" y="16" fill="#94a3b8">DNS <tspan fill="#22d3ee" font-weight="700">58 → 11 ms</tspan></text>
+  </g>
+
+  <text x="640" y="502" text-anchor="middle" fill="#475569" font-size="14">PowerShell 5.1 &amp; 7  ·  no installs  ·  safe &amp; fully revertible</text>
 </svg>
