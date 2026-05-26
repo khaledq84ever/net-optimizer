@@ -50,7 +50,8 @@ param(
   [switch]$Gaming,       # also lower latency (disable Nagle)
   [switch]$Watch,        # stability watchdog: monitor, log drops, (optionally) auto-recover
   [switch]$AutoReset,    # with -Watch: auto-reset the adapter during a sustained outage
-  [int]$WatchInterval = 4 # seconds between connectivity checks in -Watch mode
+  [int]$WatchInterval = 4, # seconds between connectivity checks in -Watch mode
+  [switch]$Report        # also write a shareable HTML report next to the script
 )
 
 # ── Elevate to Administrator (changes + some reads need it) ──────────────────
@@ -65,6 +66,7 @@ if (-not $isAdmin) {
   if ($Gaming)    { $argList += '-Gaming' }
   if ($Watch)     { $argList += '-Watch' }
   if ($AutoReset) { $argList += '-AutoReset' }
+  if ($Report)    { $argList += '-Report' }
   Start-Process powershell.exe -Verb RunAs -ArgumentList $argList
   return
 }
@@ -95,8 +97,10 @@ function Warn  { param($m) Say "  [!]  $m" 'Yellow' }
 function Bad   { param($m) Say "  [X]  $m" 'Red' }
 
 # ── Preflight: this tool is Windows-only and uses cmdlets from Win8/Win10+ ────
-$isWindows = ($env:OS -eq 'Windows_NT') -or ($PSVersionTable.Platform -eq 'Win32NT') -or ($null -eq $PSVersionTable.Platform)
-if (-not $isWindows) {
+# NB: don't name this $isWindows — that's a read-only automatic variable in
+# PowerShell 7, and assigning to it throws.
+$onWindows = ($env:OS -eq 'Windows_NT') -or ($PSVersionTable.Platform -eq 'Win32NT') -or ($null -eq $PSVersionTable.Platform)
+if (-not $onWindows) {
   Bad "This tool only works on Windows (it tunes Windows networking settings). Detected a non-Windows OS — exiting."
   return
 }
@@ -342,6 +346,124 @@ function Show-BeforeAfter {
   Say ("  DNS      : " + (_d $bDns $aDns 'ms' $true)) 'White'
 }
 
+# ── Overall connection-quality grade ─────────────────────────────────────────
+function Get-QualityGrade {
+  # Scores the metrics that DON'T depend on your ISP plan — ping, jitter, loss,
+  # bufferbloat — so it grades responsiveness, not how big a plan you pay for.
+  param($d)
+  $score = 100.0
+  $ping = $d.Ping.AvgMs; $jit = $d.Ping.JitterMs; $loss = $d.Ping.LossPct
+  if ($null -ne $ping) { if ($ping -gt 150) { $score -= 25 } elseif ($ping -gt 80) { $score -= 15 } elseif ($ping -gt 40) { $score -= 7 } }
+  if ($null -ne $jit)  { if ($jit  -gt 30)  { $score -= 20 } elseif ($jit  -gt 15) { $score -= 10 } elseif ($jit  -gt 5)  { $score -= 4 } }
+  if ($null -ne $loss) { if ($loss -ge 3)   { $score -= 25 } elseif ($loss -ge 1)  { $score -= 12 } }
+  if ($d.Bufferbloat) {
+    $pen = @{ 'A+' = 0; 'A' = 3; 'B' = 10; 'C' = 20; 'D' = 30; 'F' = 40 }
+    if ($pen.ContainsKey($d.Bufferbloat.Grade)) { $score -= $pen[$d.Bufferbloat.Grade] }
+  }
+  if ($score -lt 0) { $score = 0 }
+  $score = [int][math]::Round($score)
+  $letter = if ($score -ge 95) { 'A+' } elseif ($score -ge 85) { 'A' } elseif ($score -ge 75) { 'B' } elseif ($score -ge 60) { 'C' } elseif ($score -ge 45) { 'D' } else { 'F' }
+  [pscustomobject]@{ Score = $score; Grade = $letter }
+}
+
+# ── Shareable HTML report (great for sending your ISP) ───────────────────────
+function Write-HtmlReport {
+  param($Before, $After)
+  $hasAfter = $null -ne $After
+  $q = Get-QualityGrade $Before
+  $gradeColors = @{ 'A+' = '#22c55e'; 'A' = '#22c55e'; 'B' = '#84cc16'; 'C' = '#eab308'; 'D' = '#f97316'; 'F' = '#ef4444' }
+  $gColor = $gradeColors[$q.Grade]; if (-not $gColor) { $gColor = '#9ca3af' }
+
+  $bestDnsB = ($Before.Dns.Values | Where-Object { $_ } | Measure-Object -Minimum).Minimum
+  $bestDnsA = if ($hasAfter) { ($After.Dns.Values | Where-Object { $_ } | Measure-Object -Minimum).Minimum } else { $null }
+  $bbB = if ($Before.Bufferbloat) { "+$($Before.Bufferbloat.IncreaseMs) ms (grade $($Before.Bufferbloat.Grade))" } else { $null }
+  $bbA = if ($hasAfter -and $After.Bufferbloat) { "+$($After.Bufferbloat.IncreaseMs) ms (grade $($After.Bufferbloat.Grade))" } else { $null }
+
+  $specs = @(
+    @{ L = 'Download';      B = $Before.Download;     A = $(if ($hasAfter) { $After.Download });     U = 'Mbps'; Lower = $false }
+    @{ L = 'Upload';        B = $Before.Upload;       A = $(if ($hasAfter) { $After.Upload });       U = 'Mbps'; Lower = $false }
+    @{ L = 'Ping (avg)';    B = $Before.Ping.AvgMs;   A = $(if ($hasAfter) { $After.Ping.AvgMs });   U = 'ms';   Lower = $true }
+    @{ L = 'Jitter';        B = $Before.Ping.JitterMs;A = $(if ($hasAfter) { $After.Ping.JitterMs });U = 'ms';   Lower = $true }
+    @{ L = 'Packet loss';   B = $Before.Ping.LossPct; A = $(if ($hasAfter) { $After.Ping.LossPct }); U = '%';    Lower = $true }
+    @{ L = 'Fastest DNS';   B = $bestDnsB;            A = $bestDnsA;                                 U = 'ms';   Lower = $true }
+  )
+
+  $rows = foreach ($s in $specs) {
+    $bCell = if ($null -eq $s.B) { '<span class=na>n/a</span>' } else { "$($s.B) <span class=u>$($s.U)</span>" }
+    $afterCells = ''
+    if ($hasAfter) {
+      $aCell = if ($null -eq $s.A) { '<span class=na>n/a</span>' } else { "$($s.A) <span class=u>$($s.U)</span>" }
+      $delta = ''
+      if ($null -ne $s.B -and $null -ne $s.A) {
+        $diff = [math]::Round($s.A - $s.B, 1)
+        $better = if ($s.Lower) { $diff -lt 0 } else { $diff -gt 0 }
+        $cls = if ([math]::Abs($diff) -lt 0.001) { 'flat' } elseif ($better) { 'good' } else { 'bad' }
+        $sign = if ($diff -gt 0) { '+' } else { '' }
+        $delta = "<span class=$cls>$sign$diff</span>"
+      }
+      $afterCells = "<td class=val>$aCell</td><td class=delta>$delta</td>"
+    }
+    "<tr><td class=lbl>$($s.L)</td><td class=val>$bCell</td>$afterCells</tr>"
+  }
+  # Bufferbloat row (text, not numeric)
+  $bbAfterCells = if ($hasAfter) { "<td class=val>$(if ($bbA) { $bbA } else { '<span class=na>n/a</span>' })</td><td class=delta></td>" } else { '' }
+  $rows += "<tr><td class=lbl>Bufferbloat</td><td class=val>$(if ($bbB) { $bbB } else { '<span class=na>n/a</span>' })</td>$bbAfterCells</tr>"
+  $rowsHtml = $rows -join "`n"
+
+  $afterHead = if ($hasAfter) { '<th>After</th><th>Change</th>' } else { '' }
+  $adapter = if ($Before.Adapter) { $Before.Adapter } else { (Get-ActiveAdapter).InterfaceDescription }
+  $when = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+
+  $css = @'
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0a0e1a;color:#e5e7eb}
+.wrap{max-width:760px;margin:0 auto;padding:40px 20px}
+.head{display:flex;align-items:center;gap:18px;margin-bottom:8px}
+.logo{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:24px}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.02em}
+.sub{color:#94a3b8;font-size:13px;margin:2px 0 0}
+.grade{margin:26px 0;padding:26px;border-radius:18px;background:#11162a;border:1px solid #1e2640;display:flex;align-items:center;gap:24px}
+.gbig{font-size:64px;font-weight:800;line-height:1}
+.gmeta{flex:1}
+.gscore{font-size:14px;color:#94a3b8}
+.bar{height:10px;border-radius:6px;background:#1e2640;margin-top:10px;overflow:hidden}
+.barfill{height:100%;border-radius:6px}
+table{width:100%;border-collapse:collapse;margin-top:8px;background:#11162a;border:1px solid #1e2640;border-radius:14px;overflow:hidden}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;padding:14px 16px;background:#0d1224}
+td{padding:13px 16px;border-top:1px solid #1e2640}
+.lbl{color:#cbd5e1}.val{font-variant-numeric:tabular-nums;font-weight:600}
+.u{color:#64748b;font-weight:400;font-size:12px}.na{color:#475569}
+.delta{font-variant-numeric:tabular-nums;font-size:13px}
+.good{color:#22c55e}.bad{color:#ef4444}.flat{color:#64748b}
+.foot{color:#64748b;font-size:12px;margin-top:22px;text-align:center}
+.foot a{color:#60a5fa;text-decoration:none}
+'@
+
+  $barColor = $gColor
+  $html = @"
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Internet Quality Report — $when</title><style>$css</style></head>
+<body><div class=wrap>
+<div class=head><div class=logo>&#9889;</div>
+<div><h1>Internet Quality Report</h1><p class=sub>$adapter &middot; $when</p></div></div>
+<div class=grade>
+<div class=gbig style="color:$gColor">$($q.Grade)</div>
+<div class=gmeta><div class=gscore>Connection quality score: <b style="color:#e5e7eb">$($q.Score)/100</b><br>(responsiveness — independent of your ISP plan size)</div>
+<div class=bar><div class=barfill style="width:$($q.Score)%;background:$barColor"></div></div></div>
+</div>
+<table><thead><tr><th>Metric</th><th>$(if ($hasAfter) { 'Before' } else { 'Result' })</th>$afterHead</tr></thead>
+<tbody>
+$rowsHtml
+</tbody></table>
+<p class=foot>Generated by <a href="https://github.com/khaledq84ever/net-optimizer">Internet Optimizer</a> &middot; measure &rarr; backup &rarr; revert &middot; no third-party boosters</p>
+</div></body></html>
+"@
+
+  $path = Join-Path $ScriptDir ("net-report-{0}.html" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  Set-Content -Path $path -Value $html -Encoding UTF8
+  return $path
+}
+
 # ── Stability watchdog ───────────────────────────────────────────────────────
 function Test-Online {
   param([string[]]$Targets)
@@ -583,6 +705,9 @@ if ($Auto) {
   if ($fixes.Count -eq 0) {
     Head "Nothing to fix"
     Good "Your connection is already optimally configured — nothing changed."
+    $qg = Get-QualityGrade $before
+    Say ("  Connection quality: {0}  ({1}/100)" -f $qg.Grade, $qg.Score) 'White'
+    if ($Report) { $rp = Write-HtmlReport -Before $before; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
     Say  "  Log saved to: $Log" 'DarkGray'
     return
   }
@@ -600,6 +725,9 @@ if ($Auto) {
   $after = Run-Diagnostics -Phase 'AFTER'
   Head "Result (before -> after)"
   Show-BeforeAfter $before $after
+  $qgB = Get-QualityGrade $before; $qgA = Get-QualityGrade $after
+  Say ("  Quality  : {0} ({1}/100) -> {2} ({3}/100)" -f $qgB.Grade,$qgB.Score,$qgA.Grade,$qgA.Score) 'White'
+  if ($Report) { $rp = Write-HtmlReport -Before $before -After $after; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
   Say ""
   Good "Auto-fix complete. Backup: $backupPath"
   Say  "  Undo anytime:  .\Optimize-Internet.ps1 -Revert" 'DarkGray'
@@ -608,6 +736,9 @@ if ($Auto) {
 }
 
 if (-not $Apply) {
+  $qg = Get-QualityGrade $before
+  Say ("  Connection quality: {0}  ({1}/100)" -f $qg.Grade, $qg.Score) 'White'
+  if ($Report) { $rp = Write-HtmlReport -Before $before; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
   Warn "This was a MEASURE-ONLY run. Recommended next step — auto-detect & fix only what's wrong:"
   Say  "     .\Optimize-Internet.ps1 -Auto" 'White'
   Say  "  Or apply ALL tweaks:  .\Optimize-Internet.ps1 -Apply   (add -Gaming for lower latency)" 'DarkGray'
@@ -682,6 +813,9 @@ $after = Run-Diagnostics -Phase 'AFTER'
 # ── BEFORE / AFTER SUMMARY ───────────────────────────────────────────────────
 Head "Result (before -> after)"
 Show-BeforeAfter $before $after
+$qgB = Get-QualityGrade $before; $qgA = Get-QualityGrade $after
+Say ("  Quality  : {0} ({1}/100) -> {2} ({3}/100)" -f $qgB.Grade,$qgB.Score,$qgA.Grade,$qgA.Score) 'White'
+if ($Report) { $rp = Write-HtmlReport -Before $before -After $after; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
 Say ""
 Good "Done. Settings backed up to: $backupPath"
 Say  "  Undo anytime with:  .\Optimize-Internet.ps1 -Revert" 'DarkGray'
