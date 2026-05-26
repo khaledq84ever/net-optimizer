@@ -19,12 +19,24 @@ No boosters, no snake-oil, no third-party downloads — just documented Windows 
 
 ## ⚡ Quick start
 
+**Get it on your Windows PC** — open PowerShell and paste:
+
+```powershell
+cd $env:USERPROFILE\Downloads
+irm https://raw.githubusercontent.com/khaledq84ever/net-optimizer/main/Optimize-Internet.ps1 -OutFile Optimize-Internet.ps1
+```
+
+Then run it (it auto-elevates — click **Yes** on the UAC prompt):
+
 ```powershell
 # Recommended — reads your speed, fixes only what's wrong, re-tests to prove it:
 powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Auto
 
 # Add a shareable HTML report (great for sending your ISP):
 powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Auto -Report
+
+# Changed your mind? Undo everything:
+powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Revert
 ```
 
 > **Even easier:** copy `Run.bat` + `Optimize-Internet.ps1` into one folder, **double-click `Run.bat`**, and pick **[1] AUTO**. No typing.
