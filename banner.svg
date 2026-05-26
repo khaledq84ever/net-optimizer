@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" font-family="'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0f1b34"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="460" rx="18" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="458" rx="18" fill="none" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- signal bars mark -->
+  <g transform="translate(64,70)" filter="url(#glow)">
+    <rect x="0"  y="48" width="16" height="22" rx="3" fill="url(#accent)" opacity="0.55"/>
+    <rect x="24" y="34" width="16" height="36" rx="3" fill="url(#accent)" opacity="0.7"/>
+    <rect x="48" y="18" width="16" height="52" rx="3" fill="url(#accent)" opacity="0.85"/>
+    <rect x="72" y="0"  width="16" height="70" rx="3" fill="url(#accent)"/>
+  </g>
+
+  <text x="180" y="92" fill="#f1f5f9" font-size="52" font-weight="700">Internet Optimizer</text>
+  <text x="182" y="130" fill="#7dd3fc" font-size="23" font-weight="600">Measure → Auto-detect → Fix only what's broken → Verify</text>
+  <text x="182" y="160" fill="#94a3b8" font-size="18">Windows · PowerShell · safe by design · fully revertible</text>
+
+  <!-- terminal mockup -->
+  <g transform="translate(64,196)">
+    <rect width="1072" height="232" rx="12" fill="#0a0f1c" stroke="#1e293b" stroke-width="1.5"/>
+    <circle cx="26" cy="26" r="7" fill="#ef4444"/><circle cx="50" cy="26" r="7" fill="#f59e0b"/><circle cx="74" cy="26" r="7" fill="#22c55e"/>
+    <text x="110" y="31" fill="#64748b" font-size="15" font-family="Consolas,'Courier New',monospace">Optimize-Internet.ps1  -Auto</text>
+    <g font-family="Consolas,'Courier New',monospace" font-size="17">
+      <text x="28" y="74"  fill="#38bdf8">── Auto-detecting problems ──</text>
+      <text x="28" y="102" fill="#22c55e">[OK]  TCP autotuning already normal</text>
+      <text x="28" y="128" fill="#f59e0b">[!]   Slow DNS, Network throttle ON, Adapter power-saving ON</text>
+      <text x="28" y="156" fill="#22c55e">[OK]  Fixed: Slow DNS         ~58 ms → Cloudflare ~11 ms</text>
+      <text x="28" y="182" fill="#22c55e">[OK]  Fixed: Network throttle &#160;NetworkThrottlingIndex → off</text>
+      <text x="28" y="208" fill="#e2e8f0">Download <tspan fill="#22d3ee" font-weight="700">41 → 93 Mbps</tspan>   Ping <tspan fill="#22d3ee" font-weight="700">37 → 21 ms</tspan>   DNS <tspan fill="#22d3ee" font-weight="700">58 → 11 ms</tspan></text>
+    </g>
+  </g>
+</svg>

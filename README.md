@@ -1,7 +1,19 @@
 # Internet Optimizer (Windows)
 
+![Internet Optimizer](banner.svg)
+
 A safe PowerShell script that **measures** your connection and applies real,
 proven speed/stability tweaks — then shows you the before/after.
+
+## ⚡ Recommended: Auto mode
+`Auto` does it all in one shot — **reads your speed, finds only the things that
+are actually wrong, fixes those, then re-tests to prove it helped.** It won't
+touch anything that's already fine, and it backs up before every change.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Auto
+```
+(or just double-click `Run.bat` and pick **[1] AUTO**)
 
 > It can't make your internet faster than your ISP plan. What it does is remove
 > the things that keep Windows *below* that ceiling: slow DNS, Windows' built-in
@@ -25,11 +37,12 @@ undo it all with one command.
 2. **Double-click `Run.bat`.** Click **Yes** on the Administrator prompt.
 3. Pick from the menu:
    ```
-     [1]  Measure only       (changes nothing)
-     [2]  Optimize speed
-     [3]  Optimize + Gaming
-     [4]  Undo / Revert
-     [5]  Exit
+     [1]  AUTO  (recommended)   read -> find problems -> fix only those -> re-test
+     [2]  Measure only          (changes nothing)
+     [3]  Optimize ALL          (apply every tweak)
+     [4]  Optimize ALL + Gaming
+     [5]  Undo / Revert
+     [6]  Exit
    ```
 That's it — no typing commands. (The manual command-line way is below if you prefer it.)
 

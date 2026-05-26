@@ -44,9 +44,10 @@
 
 [CmdletBinding()]
 param(
-  [switch]$Apply,
-  [switch]$Revert,
-  [switch]$Gaming
+  [switch]$Auto,     # read -> detect problems -> fix only what's broken -> re-test
+  [switch]$Apply,    # apply ALL optimizations (blanket)
+  [switch]$Revert,   # undo from the latest backup
+  [switch]$Gaming    # also lower latency (disable Nagle)
 )
 
 # ── Elevate to Administrator (changes + some reads need it) ──────────────────
@@ -55,6 +56,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $isAdmin) {
   Write-Host "Re-launching as Administrator..." -ForegroundColor Yellow
   $argList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"")
+  if ($Auto)   { $argList += '-Auto' }
   if ($Apply)  { $argList += '-Apply' }
   if ($Revert) { $argList += '-Revert' }
   if ($Gaming) { $argList += '-Gaming' }
@@ -141,6 +143,61 @@ function Get-OptimalMtu {
   if ($best) { return ($best + 28) } else { return $null }
 }
 
+# ── Read the CURRENT Windows network settings (for auto-detect) ──────────────
+function Get-NetworkState {
+  $ad = Get-ActiveAdapter
+  $throttle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
+  if ($null -eq $throttle) { $throttle = 10 }   # Windows default = throttled
+  $auto = 'unknown'; $rss = 'unknown'
+  try {
+    $g = netsh int tcp show global
+    if (($g | Select-String 'Auto-Tuning Level') -match ':\s*(\w+)') { $auto = $Matches[1] }
+    if (($g | Select-String 'Receive-Side Scaling State') -match ':\s*(\w+)') { $rss = $Matches[1] }
+  } catch {}
+  $nicPower = $null
+  if ($ad) { try { $nicPower = (Get-NetAdapterPowerManagement -Name $ad.Name -ErrorAction Stop).AllowComputerToTurnOffDevice } catch {} }
+  $powerSaver = ((powercfg /getactivescheme) -join ' ') -match 'Power saver'
+  $dns = @(); if ($ad) { $dns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
+  [pscustomobject]@{
+    Adapter = $ad; Throttle = $throttle; Autotuning = $auto; Rss = $rss
+    NicPower = $nicPower; PowerSaver = $powerSaver; Dns = $dns
+  }
+}
+
+# ── Save a restore point before changing anything ────────────────────────────
+function Backup-Settings {
+  $ad = Get-ActiveAdapter
+  $curDns = @(); if ($ad) { $curDns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
+  $curThrottle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
+  if ($null -eq $curThrottle) { $curThrottle = 10 }
+  $curAuto = 'normal'
+  try { $a = netsh int tcp show global | Select-String 'Auto-Tuning Level'; if ($a -match ':\s*(\w+)') { $curAuto = $Matches[1] } } catch {}
+  $curScheme = (powercfg /getactivescheme) -replace '.*GUID:\s*([\w-]+).*','$1'
+  $obj = [pscustomobject]@{
+    Timestamp = (Get-Date).ToString('s'); AdapterName = $ad.Name; DnsServers = $curDns
+    NetworkThrottlingIndex = $curThrottle; AutotuningLevel = $curAuto; PowerScheme = $curScheme
+  }
+  $path = Join-Path $ScriptDir ("net-backup-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  $obj | ConvertTo-Json | Set-Content $path
+  return $path
+}
+
+function Show-BeforeAfter {
+  param($before, $after)
+  function _d($b, $a, $unit, $lowerBetter) {
+    if ($b -eq $null -or $a -eq $null) { return "$b -> $a $unit" }
+    $diff = $a - $b
+    $better = if ($lowerBetter) { $diff -lt 0 } else { $diff -gt 0 }
+    $tag = if ([math]::Abs($diff) -lt 0.001) { '(no change)' } elseif ($better) { '(better)' } else { '(worse)' }
+    "{0} -> {1} {2}  {3}" -f $b, $a, $unit, $tag
+  }
+  Say ("  Download : " + (_d $before.Download $after.Download 'Mbps' $false)) 'White'
+  Say ("  Ping     : " + (_d $before.Ping.AvgMs $after.Ping.AvgMs 'ms' $true)) 'White'
+  $bDns = ($before.Dns.Values | Where-Object { $_ } | Measure-Object -Minimum).Minimum
+  $aDns = ($after.Dns.Values  | Where-Object { $_ } | Measure-Object -Minimum).Minimum
+  Say ("  DNS      : " + (_d $bDns $aDns 'ms' $true)) 'White'
+}
+
 $DnsCandidates = [ordered]@{
   'Cloudflare'      = '1.1.1.1'
   'Google'          = '8.8.8.8'
@@ -221,36 +278,93 @@ foreach ($k in $DnsCandidates.Keys) {
 
 Head "Recommendation"
 if ($fastestName) { Say ("  Fastest DNS for you: {0} ({1}) at {2} ms" -f $fastestName, $DnsCandidates[$fastestName], $fastestDns) 'White' }
+
+# ── AUTO mode: read -> detect only the REAL problems -> fix those -> re-test ──
+if ($Auto) {
+  Head "Auto-detecting problems"
+  $state = Get-NetworkState
+  $fixes = @()   # each: { Name; Detail; Action = scriptblock }
+
+  # 1) Slow DNS — switch only if current is meaningfully slower than the fastest.
+  $curDnsAvg = $before.Dns['Current (DHCP)']
+  if ($fastestName -and $fastestDns -ne $null) {
+    $alreadyFastest = $state.Dns -contains $DnsCandidates[$fastestName]
+    $slower = ($curDnsAvg -eq $null) -or ($curDnsAvg -gt ($fastestDns + 15)) -or ($curDnsAvg -gt $fastestDns * 1.25)
+    if ($slower -and -not $alreadyFastest) {
+      $p = $DnsCandidates[$fastestName]
+      $sec = if ($p -eq '1.1.1.1') { '1.0.0.1' } elseif ($p -eq '8.8.8.8') { '8.8.4.4' } elseif ($p -eq '9.9.9.9') { '149.112.112.112' } else { '1.1.1.1' }
+      $fixes += [pscustomobject]@{ Name = 'Slow DNS'; Detail = "~$curDnsAvg ms -> $fastestName ($p) ~$fastestDns ms"; Action = { Set-DnsClientServerAddress -InterfaceAlias $state.Adapter.Name -ServerAddresses @($p, $sec) -ErrorAction Stop }.GetNewClosure() }
+    } else { Good "DNS already fast (~$([int]$fastestDns) ms)" }
+  }
+
+  # 2) Windows network throttle (DWORD comes back as -1 when already disabled).
+  $throttleOff = ($state.Throttle -eq -1) -or ([int64]$state.Throttle -eq 4294967295)
+  if (-not $throttleOff) {
+    $fixes += [pscustomobject]@{ Name = 'Network throttle ON'; Detail = "NetworkThrottlingIndex=$($state.Throttle) -> off"; Action = { reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 0xffffffff /f | Out-Null } }
+  } else { Good "Network throttle already off" }
+
+  # 3) TCP autotuning
+  if ($state.Autotuning -ne 'normal' -and $state.Autotuning -ne 'unknown') {
+    $fixes += [pscustomobject]@{ Name = "TCP autotuning '$($state.Autotuning)'"; Detail = '-> normal'; Action = { netsh int tcp set global autotuninglevel=normal | Out-Null } }
+  } else { Good "TCP autotuning already normal" }
+
+  # 4) Receive-Side Scaling
+  if ($state.Rss -ne 'enabled' -and $state.Rss -ne 'unknown') {
+    $fixes += [pscustomobject]@{ Name = 'RSS disabled'; Detail = '-> enabled'; Action = { netsh int tcp set global rss=enabled | Out-Null } }
+  } else { Good "Receive-Side Scaling already on" }
+
+  # 5) Adapter power-saving (big hidden cause of Wi-Fi slowdowns)
+  if ($state.NicPower -eq 'Enabled' -and $state.Adapter) {
+    $fixes += [pscustomobject]@{ Name = 'Adapter power-saving ON'; Detail = "'$($state.Adapter.Name)' -> no sleep"; Action = { Set-NetAdapterPowerManagement -Name $state.Adapter.Name -AllowComputerToTurnOffDevice Disabled -NoRestart -ErrorAction Stop }.GetNewClosure() }
+  } else { Good "Adapter power-saving already off (or n/a)" }
+
+  # 6) Power-saver plan
+  if ($state.PowerSaver) {
+    $fixes += [pscustomobject]@{ Name = 'Power-saver plan'; Detail = '-> High performance'; Action = { powercfg /setactive SCHEME_MIN 2>$null } }
+  } else { Good "Power plan fine (not power-saver)" }
+
+  # Things a script genuinely can't fix — report honestly.
+  if ($before.Ping.LossPct -ge 2) { Warn "Packet loss ~$($before.Ping.LossPct)% — usually Wi-Fi signal or ISP. Move closer to the router or go wired." }
+  if ($before.Ping.AvgMs -ne $null -and $before.Ping.AvgMs -gt 80) { Warn "High ping ($($before.Ping.AvgMs) ms) — mostly distance/ISP; the fixes above help a little." }
+
+  if ($fixes.Count -eq 0) {
+    Head "Nothing to fix"
+    Good "Your connection is already optimally configured — nothing changed."
+    Say  "  Log saved to: $Log" 'DarkGray'
+    return
+  }
+
+  Head ("Found {0} issue(s) — fixing automatically" -f $fixes.Count)
+  $backupPath = Backup-Settings
+  Good "Backup saved -> $backupPath  (undo anytime with -Revert)"
+  foreach ($f in $fixes) {
+    try { & $f.Action; Good ("Fixed: {0}   [{1}]" -f $f.Name, $f.Detail) }
+    catch { Bad ("Could not fix {0}: {1}" -f $f.Name, $_.Exception.Message) }
+  }
+  ipconfig /flushdns | Out-Null
+
+  Start-Sleep -Seconds 2
+  $after = Run-Diagnostics -Phase 'AFTER'
+  Head "Result (before -> after)"
+  Show-BeforeAfter $before $after
+  Say ""
+  Good "Auto-fix complete. Backup: $backupPath"
+  Say  "  Undo anytime:  .\Optimize-Internet.ps1 -Revert" 'DarkGray'
+  Warn "Tip: a reboot helps the TCP/throttle changes fully settle in."
+  return
+}
+
 if (-not $Apply) {
-  Warn "This was a MEASURE-ONLY run. To apply the speed optimizations, run:"
-  Say  "     .\Optimize-Internet.ps1 -Apply" 'White'
-  Say  "  (add -Gaming to also cut latency for games/voice)" 'DarkGray'
+  Warn "This was a MEASURE-ONLY run. Recommended next step — auto-detect & fix only what's wrong:"
+  Say  "     .\Optimize-Internet.ps1 -Auto" 'White'
+  Say  "  Or apply ALL tweaks:  .\Optimize-Internet.ps1 -Apply   (add -Gaming for lower latency)" 'DarkGray'
   return
 }
 
 # ── APPLY ────────────────────────────────────────────────────────────────────
 Head "Backing up current settings"
 $ad = Get-ActiveAdapter
-$curDns = @()
-if ($ad) {
-  $curDns = (Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
-}
-$curThrottle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
-if ($null -eq $curThrottle) { $curThrottle = 10 }      # Windows default
-$curAuto = 'normal'
-try { $a = netsh int tcp show global | Select-String 'Auto-Tuning Level'; if ($a -match ':\s*(\w+)') { $curAuto = $Matches[1] } } catch {}
-$curScheme = (powercfg /getactivescheme) -replace '.*GUID:\s*([\w-]+).*','$1'
-
-$backup = [pscustomobject]@{
-  Timestamp              = (Get-Date).ToString('s')
-  AdapterName            = $ad.Name
-  DnsServers             = $curDns
-  NetworkThrottlingIndex = $curThrottle
-  AutotuningLevel        = $curAuto
-  PowerScheme            = $curScheme
-}
-$backupPath = Join-Path $ScriptDir ("net-backup-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-$backup | ConvertTo-Json | Set-Content $backupPath
+$backupPath = Backup-Settings
 Good "Saved backup -> $backupPath  (use -Revert to undo)"
 
 Head "Applying optimizations"
@@ -267,9 +381,8 @@ if ($fastestName -and $ad) {
 
 # 2) Remove Windows' artificial network throttle (helps high-throughput)
 try {
-  Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' `
-    -Name 'NetworkThrottlingIndex' -Value 0xffffffff -Type DWord -ErrorAction Stop
-  Good "Disabled NetworkThrottlingIndex (was $curThrottle)"
+  reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 0xffffffff /f | Out-Null
+  Good "Disabled NetworkThrottlingIndex"
 } catch { Bad "Throttle tweak failed: $($_.Exception.Message)" }
 
 # 3) TCP autotuning + RSS so big transfers ramp to full bandwidth

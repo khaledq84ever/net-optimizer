@@ -21,22 +21,24 @@ echo ============================================
 echo.
 echo   What do you want to do?
 echo.
-echo     [1]  Measure only          (changes nothing - see where you stand)
-echo     [2]  Optimize speed        (apply tweaks + show before/after)
-echo     [3]  Optimize + Gaming     (also lowers latency for games/voice)
-echo     [4]  Undo / Revert         (restore your previous settings)
-echo     [5]  Exit
+echo     [1]  AUTO  (recommended)    read speed, find problems, fix only those, re-test
+echo     [2]  Measure only          (changes nothing - just see where you stand)
+echo     [3]  Optimize ALL          (apply every tweak, not just the broken ones)
+echo     [4]  Optimize ALL + Gaming (also lowers latency for games/voice)
+echo     [5]  Undo / Revert         (restore your previous settings)
+echo     [6]  Exit
 echo.
 set "choice="
 set /p "choice=  Type a number and press Enter: "
 
-if "%choice%"=="1" ( %PS%          & goto done )
-if "%choice%"=="2" ( %PS% -Apply   & goto done )
-if "%choice%"=="3" ( %PS% -Apply -Gaming & goto done )
-if "%choice%"=="4" ( %PS% -Revert  & goto done )
-if "%choice%"=="5" ( exit /b )
+if "%choice%"=="1" ( %PS% -Auto   & goto done )
+if "%choice%"=="2" ( %PS%         & goto done )
+if "%choice%"=="3" ( %PS% -Apply  & goto done )
+if "%choice%"=="4" ( %PS% -Apply -Gaming & goto done )
+if "%choice%"=="5" ( %PS% -Revert & goto done )
+if "%choice%"=="6" ( exit /b )
 echo.
-echo   Please type 1, 2, 3, 4 or 5.
+echo   Please type a number from 1 to 6.
 timeout /t 2 >nul
 goto menu
 
