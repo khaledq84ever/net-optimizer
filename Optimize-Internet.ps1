@@ -65,7 +65,18 @@ if (-not $isAdmin) {
 }
 
 $ErrorActionPreference = 'Continue'
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+# CRITICAL on Windows PowerShell 5.1: the IWR progress bar throttles downloads
+# ~10x, which would make the speed test read falsely low. Turn it off.
+$ProgressPreference = 'SilentlyContinue'
+# PS 5.1 defaults to old TLS that Cloudflare rejects — force TLS 1.2 so the
+# speed test (https) actually connects.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+
+# Reliable script folder: $PSScriptRoot is set when run as a .ps1; fall back
+# sensibly if invoked oddly.
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot }
+             elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath }
+             else { (Get-Location).Path }
 $Log = Join-Path $ScriptDir ("net-optimizer-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
 function Say   { param($m,$c='Gray') Write-Host $m -ForegroundColor $c; Add-Content $Log $m }
@@ -73,6 +84,22 @@ function Head  { param($m) Write-Host ""; Write-Host "── $m ──" -Foregro
 function Good  { param($m) Say "  [OK] $m" 'Green' }
 function Warn  { param($m) Say "  [!]  $m" 'Yellow' }
 function Bad   { param($m) Say "  [X]  $m" 'Red' }
+
+# ── Preflight: this tool is Windows-only and uses cmdlets from Win8/Win10+ ────
+$isWindows = ($env:OS -eq 'Windows_NT') -or ($PSVersionTable.Platform -eq 'Win32NT') -or ($null -eq $PSVersionTable.Platform)
+if (-not $isWindows) {
+  Bad "This tool only works on Windows (it tunes Windows networking settings). Detected a non-Windows OS — exiting."
+  return
+}
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+  Bad "Windows PowerShell 5.0+ is required (you have $($PSVersionTable.PSVersion)). Update Windows or install PowerShell 7."
+  return
+}
+# Make sure the networking cmdlets we rely on actually exist (stripped/Server Core installs may lack them).
+$missing = @('Get-NetAdapter','Get-NetRoute','Resolve-DnsName','Set-DnsClientServerAddress') | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
+if ($missing.Count) {
+  Warn "Some Windows networking cmdlets are missing ($($missing -join ', ')). The script will still run and skip anything unavailable."
+}
 
 # ── Helpers: the active internet adapter ─────────────────────────────────────
 function Get-ActiveAdapter {
@@ -118,14 +145,17 @@ function Test-DnsResolver {
 
 function Test-Download {
   # Uses Cloudflare's public speed-test endpoint (designed for exactly this).
-  param([int64]$Bytes = 25000000)
-  $url = "https://speed.cloudflare.com/__down?bytes=$Bytes"
+  param([int64]$Bytes = 15000000)
+  $base = 'https://speed.cloudflare.com/__down?bytes='
+  $hdr  = @{ 'Cache-Control' = 'no-cache' }
   try {
+    # Warm-up: open the connection + get past TCP slow-start (timing ignored).
+    try { Invoke-WebRequest -Uri "${base}2000000" -Headers $hdr -UseBasicParsing -TimeoutSec 30 | Out-Null } catch {}
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 90 | Out-Null
+    Invoke-WebRequest -Uri "$base$Bytes" -Headers $hdr -UseBasicParsing -TimeoutSec 90 | Out-Null
     $sw.Stop()
-    $mbps = ($Bytes * 8) / $sw.Elapsed.TotalSeconds / 1000000
-    return [math]::Round($mbps, 1)
+    if ($sw.Elapsed.TotalSeconds -le 0) { return $null }
+    [math]::Round(($Bytes * 8) / $sw.Elapsed.TotalSeconds / 1000000, 1)
   } catch { return $null }
 }
 

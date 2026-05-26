@@ -79,6 +79,14 @@ That's it — no typing commands. (The manual command-line way is below if you p
 A **reboot** helps the TCP/MTU changes fully take effect. If anything ever feels
 worse, run `-Revert` and reboot — you're back to exactly how you started.
 
+## Requirements
+- **Windows 10 or 11** (also works on Win8.1 / Server with the networking cmdlets).
+- **Windows PowerShell 5.1** (built into Windows) **or PowerShell 7+** — both supported.
+- Run as **Administrator** (the launcher does this for you).
+
+The script preflight-checks all of this and exits cleanly with a clear message
+if something's missing — it won't half-run or crash.
+
 ## Is it safe?
 - Measure-only by default; **nothing changes** unless you pass `-Apply`.
 - Every changed setting is saved to a backup file before the change.
