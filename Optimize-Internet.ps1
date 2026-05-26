@@ -44,10 +44,13 @@
 
 [CmdletBinding()]
 param(
-  [switch]$Auto,     # read -> detect problems -> fix only what's broken -> re-test
-  [switch]$Apply,    # apply ALL optimizations (blanket)
-  [switch]$Revert,   # undo from the latest backup
-  [switch]$Gaming    # also lower latency (disable Nagle)
+  [switch]$Auto,         # read -> detect problems -> fix only what's broken -> re-test
+  [switch]$Apply,        # apply ALL optimizations (blanket)
+  [switch]$Revert,       # undo from the latest backup
+  [switch]$Gaming,       # also lower latency (disable Nagle)
+  [switch]$Watch,        # stability watchdog: monitor, log drops, (optionally) auto-recover
+  [switch]$AutoReset,    # with -Watch: auto-reset the adapter during a sustained outage
+  [int]$WatchInterval = 4 # seconds between connectivity checks in -Watch mode
 )
 
 # ── Elevate to Administrator (changes + some reads need it) ──────────────────
@@ -56,10 +59,12 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $isAdmin) {
   Write-Host "Re-launching as Administrator..." -ForegroundColor Yellow
   $argList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"")
-  if ($Auto)   { $argList += '-Auto' }
-  if ($Apply)  { $argList += '-Apply' }
-  if ($Revert) { $argList += '-Revert' }
-  if ($Gaming) { $argList += '-Gaming' }
+  if ($Auto)      { $argList += '-Auto' }
+  if ($Apply)     { $argList += '-Apply' }
+  if ($Revert)    { $argList += '-Revert' }
+  if ($Gaming)    { $argList += '-Gaming' }
+  if ($Watch)     { $argList += '-Watch' }
+  if ($AutoReset) { $argList += '-AutoReset' }
   Start-Process powershell.exe -Verb RunAs -ArgumentList $argList
   return
 }
@@ -274,6 +279,91 @@ function Show-BeforeAfter {
   Say ("  DNS      : " + (_d $bDns $aDns 'ms' $true)) 'White'
 }
 
+# ── Stability watchdog ───────────────────────────────────────────────────────
+function Test-Online {
+  param([string[]]$Targets)
+  foreach ($t in $Targets) {
+    try { $p = New-Object System.Net.NetworkInformation.Ping; if ($p.Send($t, 1500).Status -eq 'Success') { return $true } } catch {}
+  }
+  return $false
+}
+
+function Start-Watchdog {
+  param(
+    [string[]]$Targets = @('1.1.1.1','8.8.8.8'),
+    [int]$IntervalSec = 4, [int]$FailsToDown = 3, [int]$ResetAfterSec = 30, [switch]$AutoReset
+  )
+  $csv = Join-Path $ScriptDir ("net-watchdog-{0}.csv" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  "Timestamp,Event,Detail" | Set-Content $csv
+  function LogEvt($evt, $detail) { ("{0},{1},{2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $evt, $detail) | Add-Content $csv }
+
+  $start = Get-Date
+  $outages = 0; [double]$totalDownMs = 0; [double]$longestMs = 0
+  $consecFails = 0; $down = $false; $downStart = $null
+  $lastReset = (Get-Date).AddYears(-1); $resetCooldownSec = 120; $lastBeat = Get-Date
+
+  Head "Stability watchdog"
+  Say ("  Watching {0} every {1}s.  Auto-reset: {2}" -f ($Targets -join ', '), $IntervalSec, $(if ($AutoReset) { "ON (after ${ResetAfterSec}s down)" } else { 'off' }))
+  Say ("  Logging every drop to: {0}" -f $csv)
+  Say "  Leave this window open. Press Ctrl+C to stop and see the summary." 'DarkGray'
+  LogEvt 'START' "targets=$($Targets -join '|') interval=${IntervalSec}s autoReset=$([bool]$AutoReset)"
+
+  try {
+    while ($true) {
+      $online = Test-Online -Targets $Targets
+      $now = Get-Date
+      if ($online) {
+        if ($down) {
+          $dur = ($now - $downStart).TotalMilliseconds
+          $outages++; $totalDownMs += $dur; if ($dur -gt $longestMs) { $longestMs = $dur }
+          $secs = [math]::Round($dur / 1000, 1)
+          Good ("RECOVERED at {0} — outage lasted {1}s" -f $now.ToString('HH:mm:ss'), $secs)
+          LogEvt 'UP' "outage_sec=$secs"
+          $down = $false; $downStart = $null
+        }
+        $consecFails = 0
+      }
+      else {
+        $consecFails++
+        if (-not $down -and $consecFails -ge $FailsToDown) {
+          $down = $true; $downStart = $now
+          Bad ("DOWN at {0} — no reply from any target" -f $now.ToString('HH:mm:ss'))
+          LogEvt 'DOWN' "after_${FailsToDown}_failed_checks"
+        }
+        if ($down -and $AutoReset -and (($now - $downStart).TotalSeconds -ge $ResetAfterSec) -and (($now - $lastReset).TotalSeconds -ge $resetCooldownSec)) {
+          $ad = Get-ActiveAdapter
+          if ($ad) {
+            Warn ("Sustained outage — resetting adapter '{0}'..." -f $ad.Name)
+            try { Restart-NetAdapter -Name $ad.Name -Confirm:$false -ErrorAction Stop; LogEvt 'RESET' "adapter=$($ad.Name)" }
+            catch { Bad "Adapter reset failed: $($_.Exception.Message)"; LogEvt 'RESET_FAIL' $_.Exception.Message }
+            $lastReset = Get-Date
+          }
+        }
+      }
+      if (($now - $lastBeat).TotalSeconds -ge 30) {
+        $totalMs = ($now - $start).TotalMilliseconds
+        $up = if ($totalMs -gt 0) { [math]::Round(100 - ($totalDownMs / $totalMs * 100), 2) } else { 100 }
+        Say ("  [{0}] alive · {1} min · outages {2} · uptime {3}%{4}" -f $now.ToString('HH:mm:ss'), [math]::Round($totalMs / 60000, 1), $outages, $up, $(if ($down) { ' · CURRENTLY DOWN' } else { '' })) 'DarkGray'
+        $lastBeat = $now
+      }
+      Start-Sleep -Seconds $IntervalSec
+    }
+  }
+  finally {
+    $end = Get-Date; $totalMs = ($end - $start).TotalMilliseconds
+    if ($down -and $downStart) { $totalDownMs += ($end - $downStart).TotalMilliseconds }
+    $up = if ($totalMs -gt 0) { [math]::Round(100 - ($totalDownMs / $totalMs * 100), 2) } else { 100 }
+    Head "Watchdog summary"
+    Say ("  Monitored      : {0} min" -f [math]::Round($totalMs / 60000, 1)) 'White'
+    Say ("  Outages        : {0}" -f $outages) 'White'
+    Say ("  Total downtime : {0} s" -f [math]::Round($totalDownMs / 1000, 1)) 'White'
+    Say ("  Longest outage : {0} s" -f [math]::Round($longestMs / 1000, 1)) 'White'
+    Say ("  Uptime         : {0}%" -f $up) 'White'
+    Say ("  Full drop log  : {0}" -f $csv) 'DarkGray'
+    LogEvt 'STOP' "outages=$outages total_down_sec=$([math]::Round($totalDownMs/1000,1)) uptime_pct=$up"
+  }
+}
+
 $DnsCandidates = [ordered]@{
   'Cloudflare'      = '1.1.1.1'
   'Google'          = '8.8.8.8'
@@ -337,6 +427,12 @@ if ($Revert) {
     ipconfig /flushdns | Out-Null
     Say ""; Good "Revert complete."
   } catch { Bad "Revert error: $($_.Exception.Message)" }
+  return
+}
+
+# ── WATCH: stability watchdog (long-running; own branch) ─────────────────────
+if ($Watch) {
+  Start-Watchdog -IntervalSec $WatchInterval -AutoReset:$AutoReset
   return
 }
 

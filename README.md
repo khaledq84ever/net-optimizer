@@ -92,6 +92,22 @@ That's it — no typing commands. (The manual command-line way is below if you p
 A **reboot** helps the TCP/MTU changes fully take effect. If anything ever feels
 worse, run `-Revert` and reboot — you're back to exactly how you started.
 
+## Stability watchdog (stop drops)
+If your connection randomly drops, run the watchdog. It pings continuously and:
+- **logs every drop** to a timestamped CSV (`net-watchdog-*.csv`) with the outage
+  duration — proof you can send your ISP ("it dropped 14× yesterday, 6 min total"),
+- prints a live heartbeat (uptime %, outage count),
+- on a **sustained** outage (with `-AutoReset`) **auto-resets the adapter** to recover,
+- prints an **uptime summary** when you stop it (Ctrl+C).
+
+```powershell
+# monitor + log only:
+powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Watch
+# also auto-reset the adapter during a long outage:
+powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Watch -AutoReset
+```
+(or `Run.bat` → **[5]** monitor, or **[6]** monitor + auto-reset)
+
 ## Requirements
 - **Windows 10 or 11** (also works on Win8.1 / Server with the networking cmdlets).
 - **Windows PowerShell 5.1** (built into Windows) **or PowerShell 7+** — both supported.
