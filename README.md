@@ -2,8 +2,11 @@
 
 ![Internet Optimizer](banner.svg)
 
-A safe PowerShell script that **measures** your connection and applies real,
-proven speed/stability tweaks — then shows you the before/after.
+A safe PowerShell script that **measures** your connection (download & upload
+speed, ping, packet loss, DNS time) and applies real, proven speed/stability
+tweaks — then shows you the before/after. The download test uses **4 parallel
+streams** so it reflects your real line speed (a single stream undercounts fast
+connections).
 
 ## ⚡ Recommended: Auto mode
 `Auto` does it all in one shot — **reads your speed, finds only the things that

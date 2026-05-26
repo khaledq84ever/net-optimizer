@@ -159,6 +159,51 @@ function Test-Download {
   } catch { return $null }
 }
 
+function New-HttpClient {
+  param([int]$TimeoutSec = 60)
+  try { Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue } catch {}
+  $c = New-Object System.Net.Http.HttpClient
+  $c.Timeout = [TimeSpan]::FromSeconds($TimeoutSec)
+  return $c
+}
+
+function Test-DownloadParallel {
+  # Several simultaneous streams — a single TCP stream rarely saturates a fast
+  # line, so one-stream tests undercount. Total bytes / wall-clock = real speed.
+  param([int]$Streams = 4, [int64]$BytesPerStream = 10000000, [int]$TimeoutSec = 60)
+  $base = 'https://speed.cloudflare.com/__down?bytes='
+  $client = $null
+  try {
+    $client = New-HttpClient -TimeoutSec $TimeoutSec
+    try { $client.GetByteArrayAsync("${base}1000000").Result | Out-Null } catch {}  # warm-up
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $tasks = 1..$Streams | ForEach-Object { $client.GetByteArrayAsync("$base$BytesPerStream") }
+    [System.Threading.Tasks.Task]::WaitAll($tasks)
+    $sw.Stop()
+    $total = ($tasks | ForEach-Object { $_.Result.Length } | Measure-Object -Sum).Sum
+    if ($sw.Elapsed.TotalSeconds -le 0 -or $total -le 0) { return $null }
+    [math]::Round(($total * 8) / $sw.Elapsed.TotalSeconds / 1000000, 1)
+  } catch { return $null }
+  finally { if ($client) { $client.Dispose() } }
+}
+
+function Test-Upload {
+  # POST a buffer to Cloudflare's upload endpoint and time it.
+  param([int64]$Bytes = 8000000, [int]$TimeoutSec = 60)
+  $client = $null
+  try {
+    $client = New-HttpClient -TimeoutSec $TimeoutSec
+    $data = New-Object byte[] $Bytes
+    $content = New-Object System.Net.Http.ByteArrayContent (, $data)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $resp = $client.PostAsync('https://speed.cloudflare.com/__up', $content).Result
+    $sw.Stop()
+    if (-not $resp.IsSuccessStatusCode -or $sw.Elapsed.TotalSeconds -le 0) { return $null }
+    [math]::Round(($Bytes * 8) / $sw.Elapsed.TotalSeconds / 1000000, 1)
+  } catch { return $null }
+  finally { if ($client) { $client.Dispose() } }
+}
+
 function Get-OptimalMtu {
   # Largest non-fragmented payload to 1.1.1.1, + 28 bytes of IP/ICMP headers.
   param([string]$Target = '1.1.1.1')
@@ -222,6 +267,7 @@ function Show-BeforeAfter {
     "{0} -> {1} {2}  {3}" -f $b, $a, $unit, $tag
   }
   Say ("  Download : " + (_d $before.Download $after.Download 'Mbps' $false)) 'White'
+  Say ("  Upload   : " + (_d $before.Upload $after.Upload 'Mbps' $false)) 'White'
   Say ("  Ping     : " + (_d $before.Ping.AvgMs $after.Ping.AvgMs 'ms' $true)) 'White'
   $bDns = ($before.Dns.Values | Where-Object { $_ } | Measure-Object -Minimum).Minimum
   $aDns = ($after.Dns.Values  | Where-Object { $_ } | Measure-Object -Minimum).Minimum
@@ -246,9 +292,14 @@ function Run-Diagnostics {
   if ($ping.AvgMs -ne $null) { Say ("  Ping    : {0} ms avg, {1} ms max, {2}% loss  -> 1.1.1.1" -f $ping.AvgMs,$ping.MaxMs,$ping.LossPct) }
   else { Bad "Ping: no response from 1.1.1.1" }
 
-  Say "  Download: testing (~25 MB from Cloudflare)..."
-  $dl = Test-Download
+  Say "  Download: testing (4 parallel streams from Cloudflare)..."
+  $dl = Test-DownloadParallel
+  if (-not $dl) { $dl = Test-Download }   # fall back to single-stream if parallel failed
   if ($dl) { Say ("  Download: {0} Mbps" -f $dl) 'White' } else { Bad "Download test failed" }
+
+  Say "  Upload  : testing..."
+  $ul = Test-Upload
+  if ($ul) { Say ("  Upload  : {0} Mbps" -f $ul) 'White' } else { Warn "Upload test failed (or blocked)" }
 
   Say "  DNS     : timing resolvers (lower = faster)..."
   $dnsResults = @{}
@@ -257,7 +308,7 @@ function Run-Diagnostics {
     $dnsResults[$k] = $avg
     Say ("           {0,-16} {1}" -f $k, ($(if ($avg) { "$avg ms" } else { 'failed' })))
   }
-  [pscustomobject]@{ Ping = $ping; Download = $dl; Dns = $dnsResults }
+  [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Dns = $dnsResults }
 }
 
 # ── REVERT ───────────────────────────────────────────────────────────────────
@@ -458,18 +509,7 @@ $after = Run-Diagnostics -Phase 'AFTER'
 
 # ── BEFORE / AFTER SUMMARY ───────────────────────────────────────────────────
 Head "Result (before -> after)"
-function Delta { param($b,$a,$unit,$lowerBetter=$true)
-  if ($b -eq $null -or $a -eq $null) { return "$b -> $a $unit" }
-  $diff = $a - $b
-  $better = if ($lowerBetter) { $diff -lt 0 } else { $diff -gt 0 }
-  $tag = if ([math]::Abs($diff) -lt 0.001) { '(no change)' } elseif ($better) { '(better)' } else { '(worse)' }
-  "{0} -> {1} {2}  {3}" -f $b, $a, $unit, $tag
-}
-Say ("  Download : " + (Delta $before.Download $after.Download 'Mbps' $false)) 'White'
-Say ("  Ping     : " + (Delta $before.Ping.AvgMs $after.Ping.AvgMs 'ms' $true)) 'White'
-$bDns = ($before.Dns.Values | Where-Object {$_} | Measure-Object -Minimum).Minimum
-$aDns = ($after.Dns.Values  | Where-Object {$_} | Measure-Object -Minimum).Minimum
-Say ("  DNS      : " + (Delta $bDns $aDns 'ms' $true)) 'White'
+Show-BeforeAfter $before $after
 Say ""
 Good "Done. Settings backed up to: $backupPath"
 Say  "  Undo anytime with:  .\Optimize-Internet.ps1 -Revert" 'DarkGray'
