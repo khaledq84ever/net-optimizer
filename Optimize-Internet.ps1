@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Measure and improve a Windows PC's internet connection — safely.
 
