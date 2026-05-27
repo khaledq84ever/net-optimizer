@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="420" viewBox="0 0 860 420" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <rect width="860" height="420" rx="16" fill="#0a0e1a"/>
+  <rect x="1" y="1" width="858" height="418" rx="15" fill="none" stroke="#1e2640"/>
+
+  <text x="32" y="46" fill="#f8fafc" font-size="22" font-weight="700">DNS resolver shootout &#8212; lower is faster</text>
+  <text x="32" y="72" fill="#94a3b8" font-size="14.5">We time 5 resolvers from <tspan fill="#e5e7eb" font-weight="600">your</tspan> location and pick the quickest. Same lookup &#215; hundreds of times per browsing session = real speed.</text>
+
+  <!-- column headers -->
+  <g transform="translate(32,108)" font-size="12" fill="#64748b" font-weight="600">
+    <text x="0" y="0">RESOLVER</text>
+    <text x="180" y="0">SERVER IP</text>
+    <text x="340" y="0">LOOKUP TIME</text>
+  </g>
+
+  <!-- bars: scale = 1 ms ~ 14 px, max bar 320 px -->
+  <!-- Quad9: 2 ms (winner) -->
+  <g transform="translate(32,128)">
+    <rect width="796" height="40" rx="8" fill="#0d1224" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="14" y="26" fill="#22c55e" font-size="15" font-weight="700">Quad9</text>
+    <text x="180" y="26" fill="#cbd5e1" font-size="13">9.9.9.9</text>
+    <rect x="340" y="14" width="28" height="12" rx="6" fill="#22c55e"/>
+    <text x="376" y="26" fill="#22c55e" font-size="15" font-weight="700">2.0 ms</text>
+    <text x="700" y="26" fill="#22c55e" font-size="12" font-weight="700">&#9733; FASTEST</text>
+  </g>
+
+  <!-- Cloudflare: 3.3 ms -->
+  <g transform="translate(32,180)">
+    <rect width="796" height="40" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <text x="14" y="26" fill="#e5e7eb" font-size="15" font-weight="600">Cloudflare</text>
+    <text x="180" y="26" fill="#cbd5e1" font-size="13">1.1.1.1</text>
+    <rect x="340" y="14" width="46" height="12" rx="6" fill="#84cc16"/>
+    <text x="394" y="26" fill="#84cc16" font-size="14" font-weight="600">3.3 ms</text>
+  </g>
+
+  <!-- Google: 4.6 ms -->
+  <g transform="translate(32,232)">
+    <rect width="796" height="40" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <text x="14" y="26" fill="#e5e7eb" font-size="15" font-weight="600">Google</text>
+    <text x="180" y="26" fill="#cbd5e1" font-size="13">8.8.8.8</text>
+    <rect x="340" y="14" width="64" height="12" rx="6" fill="#eab308"/>
+    <text x="412" y="26" fill="#eab308" font-size="14" font-weight="600">4.6 ms</text>
+  </g>
+
+  <!-- Current DHCP: 8.3 ms -->
+  <g transform="translate(32,284)">
+    <rect width="796" height="40" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <text x="14" y="26" fill="#94a3b8" font-size="15" font-weight="600">Your router (DHCP)</text>
+    <text x="180" y="26" fill="#cbd5e1" font-size="13">auto</text>
+    <rect x="340" y="14" width="116" height="12" rx="6" fill="#f97316"/>
+    <text x="464" y="26" fill="#f97316" font-size="14" font-weight="600">8.3 ms</text>
+    <text x="700" y="26" fill="#f97316" font-size="12" font-weight="600">slow default</text>
+  </g>
+
+  <!-- OpenDNS: 12 ms -->
+  <g transform="translate(32,336)">
+    <rect width="796" height="40" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <text x="14" y="26" fill="#e5e7eb" font-size="15" font-weight="600">OpenDNS</text>
+    <text x="180" y="26" fill="#cbd5e1" font-size="13">208.67.222.222</text>
+    <rect x="340" y="14" width="168" height="12" rx="6" fill="#ef4444"/>
+    <text x="516" y="26" fill="#ef4444" font-size="14" font-weight="600">12.0 ms</text>
+  </g>
+
+  <text x="32" y="402" fill="#475569" font-size="12.5">Result: setting Quad9 saves <tspan fill="#22c55e" font-weight="700">6.3 ms per lookup</tspan> &#215; ~250 lookups per session = pages feel snappier <tspan fill="#e5e7eb" font-weight="600">every</tspan> click.</text>
+</svg>

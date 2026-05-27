@@ -52,7 +52,21 @@ powershell -ExecutionPolicy Bypass -File .\Optimize-Internet.ps1 -Revert
 | **Bufferbloat** ⭐ | How much your ping spikes **under load** — graded **A+ → F**. The #1 cause of lag on otherwise-fast lines, and most speed tests never show it. |
 | **Packet loss** | Dropped packets — usually Wi‑Fi signal or ISP. |
 | **DNS time** | Tests Cloudflare / Google / Quad9 / OpenDNS / your current one and picks the fastest. |
+| **First-hop latency** | Pings your home router to tell you whether the bottleneck is *your network* vs *your ISP*. |
+| **Bandwidth hogs** | Lists the top processes by open TCP connections — surfaces OneDrive / Steam / Windows Update silently using your line. |
 | **Quality score** | One objective **A+ → F** grade for responsiveness, independent of how big an ISP plan you pay for. |
+
+### Download — 4 parallel streams measure the real line speed
+
+![Download visualization](assets/download.svg)
+
+### Upload — reclaim what Windows is giving away
+
+![Upload visualization](assets/upload.svg)
+
+### DNS shootout — fastest resolver for your location, automatically
+
+![DNS comparison](assets/dns.svg)
 
 ### Bufferbloat — the headline metric
 
@@ -85,6 +99,14 @@ Plus two **read-only diagnostics** added every run (no changes applied):
 - **Top bandwidth-using processes** — surfaces hogs like OneDrive / Steam / Windows Update that secretly eat your bandwidth.
 
 `-Auto` is the smart mode: it reads your current settings and **changes only the things that are actually wrong**, leaving anything already-fine untouched. Everything it touches is **backed up first** to `net-backup-*.json`, undoable with one command.
+
+### Honest at-a-glance — every change, with its real-world effect
+
+![All 12 optimizations](assets/optimizations.svg)
+
+### Reference run — before vs. after on real Windows (CI)
+
+![Speed summary](assets/speed-summary.svg)
 
 > It can't make your internet faster than your ISP plan. What it *does* is remove
 > the things that keep Windows **below** that ceiling: slow DNS, the built-in

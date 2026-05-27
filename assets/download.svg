@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="360" viewBox="0 0 860 360" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <defs>
+    <linearGradient id="dlbar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="860" height="360" rx="16" fill="#0a0e1a"/>
+  <rect x="1" y="1" width="858" height="358" rx="15" fill="none" stroke="#1e2640"/>
+
+  <text x="32" y="46" fill="#f8fafc" font-size="22" font-weight="700">Download &#8212; 4 parallel streams from Cloudflare</text>
+  <text x="32" y="72" fill="#94a3b8" font-size="14.5">Single-stream tests undercount fast lines. We open <tspan fill="#e5e7eb" font-weight="600">four</tspan> at once so the number reflects what your ISP actually delivers.</text>
+
+  <!-- stream bars -->
+  <g transform="translate(32,108)" font-size="13" fill="#cbd5e1">
+    <g transform="translate(0,0)">
+      <text x="0" y="14" fill="#94a3b8">Stream 1</text>
+      <rect x="80" y="2" width="540" height="14" rx="7" fill="#0d1224" stroke="#1e2640"/>
+      <rect x="80" y="2" width="490" height="14" rx="7" fill="url(#dlbar)"/>
+      <text x="630" y="14" fill="#e5e7eb" font-weight="600">412 Mbps</text>
+    </g>
+    <g transform="translate(0,30)">
+      <text x="0" y="14" fill="#94a3b8">Stream 2</text>
+      <rect x="80" y="2" width="540" height="14" rx="7" fill="#0d1224" stroke="#1e2640"/>
+      <rect x="80" y="2" width="498" height="14" rx="7" fill="url(#dlbar)"/>
+      <text x="630" y="14" fill="#e5e7eb" font-weight="600">418 Mbps</text>
+    </g>
+    <g transform="translate(0,60)">
+      <text x="0" y="14" fill="#94a3b8">Stream 3</text>
+      <rect x="80" y="2" width="540" height="14" rx="7" fill="#0d1224" stroke="#1e2640"/>
+      <rect x="80" y="2" width="478" height="14" rx="7" fill="url(#dlbar)"/>
+      <text x="630" y="14" fill="#e5e7eb" font-weight="600">402 Mbps</text>
+    </g>
+    <g transform="translate(0,90)">
+      <text x="0" y="14" fill="#94a3b8">Stream 4</text>
+      <rect x="80" y="2" width="540" height="14" rx="7" fill="#0d1224" stroke="#1e2640"/>
+      <rect x="80" y="2" width="475" height="14" rx="7" fill="url(#dlbar)"/>
+      <text x="630" y="14" fill="#e5e7eb" font-weight="600">399 Mbps</text>
+    </g>
+  </g>
+
+  <!-- divider -->
+  <line x1="32" y1="240" x2="828" y2="240" stroke="#1e2640" stroke-width="1"/>
+
+  <!-- aggregate result -->
+  <g transform="translate(32,260)">
+    <text x="0" y="14" fill="#94a3b8" font-size="13" font-weight="600">AGGREGATE</text>
+    <text x="0" y="64" fill="#f8fafc" font-size="44" font-weight="800">1631 Mbps</text>
+    <text x="280" y="64" fill="#22c55e" font-size="18" font-weight="700">&#10003; matches ISP plan</text>
+    <text x="280" y="86" fill="#94a3b8" font-size="13">single-stream measured only 482 Mbps &#8212; classic undercount</text>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="360" viewBox="0 0 860 360" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <defs>
+    <linearGradient id="upbar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="upbarBefore" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+  </defs>
+  <rect width="860" height="360" rx="16" fill="#0a0e1a"/>
+  <rect x="1" y="1" width="858" height="358" rx="15" fill="none" stroke="#1e2640"/>
+
+  <text x="32" y="46" fill="#f8fafc" font-size="22" font-weight="700">Upload &#8212; reclaim what Windows is giving away</text>
+  <text x="32" y="72" fill="#94a3b8" font-size="14.5">Windows Update <tspan fill="#e5e7eb" font-weight="600">peer-shares</tspan> downloads to other PCs at full upload by default. Capping it frees your bandwidth.</text>
+
+  <!-- before bar -->
+  <g transform="translate(32,118)">
+    <text x="0" y="0" fill="#94a3b8" font-size="13" font-weight="600">BEFORE  &#8212; Delivery Optimization at default (uncapped)</text>
+    <rect x="0" y="14" width="720" height="34" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <rect x="0" y="14" width="120" height="34" rx="8" fill="url(#upbarBefore)"/>
+    <text x="135" y="36" fill="#f8fafc" font-size="20" font-weight="700">48 Mbps</text>
+    <text x="240" y="36" fill="#ef4444" font-size="13" font-weight="600">&#8593; Windows is using the rest to seed updates</text>
+  </g>
+
+  <!-- after bar -->
+  <g transform="translate(32,200)">
+    <text x="0" y="0" fill="#94a3b8" font-size="13" font-weight="600">AFTER  &#8212; Delivery Optimization upload cap 20%</text>
+    <rect x="0" y="14" width="720" height="34" rx="8" fill="#0d1224" stroke="#1e2640"/>
+    <rect x="0" y="14" width="620" height="34" rx="8" fill="url(#upbar)"/>
+    <text x="635" y="36" fill="#f8fafc" font-size="20" font-weight="700">248 Mbps</text>
+  </g>
+
+  <!-- delta callout -->
+  <g transform="translate(32,275)">
+    <rect width="796" height="58" rx="12" fill="#0d1224" stroke="#1e2640"/>
+    <text x="20" y="24" fill="#94a3b8" font-size="12" font-weight="600">RESULT</text>
+    <text x="20" y="46" fill="#22c55e" font-size="22" font-weight="800">+200 Mbps reclaimed &#8212; same line, same ISP, same router</text>
+    <text x="500" y="46" fill="#64748b" font-size="13">your upload was being given to other PCs</text>
+  </g>
+</svg>

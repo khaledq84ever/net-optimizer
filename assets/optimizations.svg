@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="600" viewBox="0 0 860 600" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <rect width="860" height="600" rx="16" fill="#0a0e1a"/>
+  <rect x="1" y="1" width="858" height="598" rx="15" fill="none" stroke="#1e2640"/>
+
+  <text x="32" y="46" fill="#f8fafc" font-size="22" font-weight="700">All 12 changes &#8212; documented &#183; backed up &#183; reversible</text>
+  <text x="32" y="72" fill="#94a3b8" font-size="14.5">Every setting below is a real Microsoft mechanism with a citation. <tspan fill="#22c55e" font-weight="600">-Revert</tspan> undoes the lot from the JSON backup.</text>
+
+  <!-- column header -->
+  <g transform="translate(32,98)" font-size="11" fill="#64748b" font-weight="700">
+    <text x="0" y="0">#</text>
+    <text x="40" y="0">CHANGE</text>
+    <text x="500" y="0">EFFECT</text>
+  </g>
+
+  <!-- Each row: 36px high -->
+  <g font-size="13.5">
+    <!-- 1 -->
+    <g transform="translate(32,116)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">1</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Fastest DNS resolver</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; web feels snappier, every click</text>
+    </g>
+    <!-- 2 -->
+    <g transform="translate(32,154)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">2</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">NetworkThrottlingIndex off</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; streaming + big downloads don't stutter</text>
+    </g>
+    <!-- 3 -->
+    <g transform="translate(32,192)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">3</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">TCP autotuning = normal</text>
+      <text x="468" y="20" fill="#94a3b8">~ helps only if previously disabled</text>
+    </g>
+    <!-- 4 -->
+    <g transform="translate(32,230)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">4</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Receive-Side Scaling on</text>
+      <text x="468" y="20" fill="#94a3b8">~ small win on multi-core PCs with capable NIC</text>
+    </g>
+    <!-- 5 -->
+    <g transform="translate(32,268)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">5</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">TCP ECN enabled</text>
+      <text x="468" y="20" fill="#94a3b8">~ smoother throughput on congested links</text>
+    </g>
+    <!-- 6 -->
+    <g transform="translate(32,306)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">6</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">TCP Timestamps off</text>
+      <text x="468" y="20" fill="#94a3b8">~ saves 12 bytes/packet, tiny latency win</text>
+    </g>
+    <!-- 7 -->
+    <g transform="translate(32,344)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">7</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Reserved bandwidth &#8594; 0%</text>
+      <text x="468" y="20" fill="#94a3b8">~ frees the 20% Windows reserves for QoS</text>
+    </g>
+    <!-- 8 -->
+    <g transform="translate(32,382)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">8</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Delivery Optimization cap 20%</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; stops Windows Update hijacking your upload</text>
+    </g>
+    <!-- 9 -->
+    <g transform="translate(32,420)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">9</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Adapter power-saving off</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; Wi-Fi stops randomly dropping</text>
+    </g>
+    <!-- 10 -->
+    <g transform="translate(32,458)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">10</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Energy Efficient Ethernet off</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; wired latency spikes / packet loss gone</text>
+    </g>
+    <!-- 11 -->
+    <g transform="translate(32,496)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">11</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">High-performance power plan</text>
+      <text x="468" y="20" fill="#22c55e">&#10003; NIC + CPU stay at full speed</text>
+    </g>
+    <!-- 12 -->
+    <g transform="translate(32,534)">
+      <rect width="796" height="32" rx="6" fill="#0d1224"/>
+      <text x="14" y="20" fill="#3b82f6" font-weight="700">12</text>
+      <text x="40" y="20" fill="#e5e7eb" font-weight="600">Optimal MTU (if &lt; 1500 detected)</text>
+      <text x="468" y="20" fill="#94a3b8">~ rare PPPoE / VPN scenarios only</text>
+    </g>
+  </g>
+
+  <text x="32" y="586" fill="#475569" font-size="12">Legend: <tspan fill="#22c55e" font-weight="700">&#10003;</tspan> = noticeable on most home PCs &#183; <tspan fill="#94a3b8">~</tspan> = small / setup-dependent &#183; every row is reversible</text>
+</svg>

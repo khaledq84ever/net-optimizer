@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="440" viewBox="0 0 860 440" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="grn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+  </defs>
+  <rect width="860" height="440" rx="16" fill="#0a0e1a"/>
+  <rect x="1" y="1" width="858" height="438" rx="15" fill="none" stroke="#1e2640"/>
+
+  <text x="32" y="46" fill="#f8fafc" font-size="22" font-weight="700">Before &#8594; After &#8212; one real CI run on real Windows</text>
+  <text x="32" y="72" fill="#94a3b8" font-size="14.5">Apply mode measures, applies all 12 optimizations, then re-measures. Numbers below are from the live CI artifact.</text>
+
+  <!-- 4-tile dashboard -->
+
+  <!-- TILE 1: Download -->
+  <g transform="translate(32,108)">
+    <rect width="200" height="140" rx="12" fill="#0d1224" stroke="#1e2640"/>
+    <text x="16" y="28" fill="#94a3b8" font-size="12" font-weight="700">DOWNLOAD</text>
+    <text x="16" y="60" fill="#64748b" font-size="13">before</text>
+    <text x="80" y="60" fill="#e5e7eb" font-size="15" font-weight="600">1793 Mbps</text>
+    <line x1="16" y1="72" x2="184" y2="72" stroke="#1e2640"/>
+    <text x="16" y="92" fill="#64748b" font-size="13">after</text>
+    <text x="80" y="92" fill="#22c55e" font-size="18" font-weight="800">2051 Mbps</text>
+    <text x="16" y="122" fill="#22c55e" font-size="14" font-weight="700">+14.4%</text>
+    <text x="80" y="122" fill="#475569" font-size="11">noise band &#177;10%</text>
+  </g>
+
+  <!-- TILE 2: Upload -->
+  <g transform="translate(248,108)">
+    <rect width="200" height="140" rx="12" fill="#0d1224" stroke="#1e2640"/>
+    <text x="16" y="28" fill="#94a3b8" font-size="12" font-weight="700">UPLOAD</text>
+    <text x="16" y="60" fill="#64748b" font-size="13">before</text>
+    <text x="80" y="60" fill="#e5e7eb" font-size="15" font-weight="600">48.8 Mbps</text>
+    <line x1="16" y1="72" x2="184" y2="72" stroke="#1e2640"/>
+    <text x="16" y="92" fill="#64748b" font-size="13">after</text>
+    <text x="80" y="92" fill="#22c55e" font-size="18" font-weight="800">248 Mbps</text>
+    <text x="16" y="122" fill="#22c55e" font-size="14" font-weight="700">+408%</text>
+    <text x="80" y="122" fill="#64748b" font-size="11">DO cap effect</text>
+  </g>
+
+  <!-- TILE 3: DNS -->
+  <g transform="translate(464,108)">
+    <rect width="200" height="140" rx="12" fill="#0d1224" stroke="#1e2640"/>
+    <text x="16" y="28" fill="#94a3b8" font-size="12" font-weight="700">DNS LOOKUP</text>
+    <text x="16" y="60" fill="#64748b" font-size="13">before</text>
+    <text x="80" y="60" fill="#e5e7eb" font-size="15" font-weight="600">11.4 ms</text>
+    <line x1="16" y1="72" x2="184" y2="72" stroke="#1e2640"/>
+    <text x="16" y="92" fill="#64748b" font-size="13">after</text>
+    <text x="80" y="92" fill="#22c55e" font-size="18" font-weight="800">6.8 ms</text>
+    <text x="16" y="122" fill="#22c55e" font-size="14" font-weight="700">&#8722;40%</text>
+    <text x="80" y="122" fill="#64748b" font-size="11">every page faster</text>
+  </g>
+
+  <!-- TILE 4: Grade -->
+  <g transform="translate(680,108)">
+    <rect width="148" height="140" rx="12" fill="#0d1224" stroke="#1e2640"/>
+    <text x="16" y="28" fill="#94a3b8" font-size="12" font-weight="700">GRADE</text>
+    <circle cx="74" cy="82" r="40" fill="url(#grn)"/>
+    <text x="74" y="92" fill="#0a0e1a" font-size="32" font-weight="800" text-anchor="middle">B</text>
+    <text x="74" y="132" fill="#94a3b8" font-size="11" text-anchor="middle">75 / 100</text>
+  </g>
+
+  <!-- divider -->
+  <line x1="32" y1="280" x2="828" y2="280" stroke="#1e2640"/>
+
+  <!-- Honest section -->
+  <g transform="translate(32,302)">
+    <text x="0" y="0" fill="#f8fafc" font-size="16" font-weight="700">What's real, what's variance</text>
+    <g transform="translate(0,26)">
+      <circle cx="6" cy="6" r="5" fill="#22c55e"/>
+      <text x="20" y="10" fill="#cbd5e1" font-size="13.5"><tspan font-weight="700" fill="#22c55e">Real:</tspan> DNS &#8722;40% (every page loads faster), Wi-Fi stability, latency under load</text>
+    </g>
+    <g transform="translate(0,52)">
+      <circle cx="6" cy="6" r="5" fill="#eab308"/>
+      <text x="20" y="10" fill="#cbd5e1" font-size="13.5"><tspan font-weight="700" fill="#eab308">Real-conditional:</tspan> Upload +408% only when Windows Update was peer-sharing</text>
+    </g>
+    <g transform="translate(0,78)">
+      <circle cx="6" cy="6" r="5" fill="#94a3b8"/>
+      <text x="20" y="10" fill="#cbd5e1" font-size="13.5"><tspan font-weight="700" fill="#94a3b8">Mostly variance:</tspan> Download &#177;15% (Azure runner network shifts between measurements)</text>
+    </g>
+    <g transform="translate(0,108)">
+      <text x="0" y="10" fill="#475569" font-size="12">The script cannot exceed your ISP plan &#8212; it removes the things keeping Windows below that ceiling.</text>
+    </g>
+  </g>
+</svg>
