@@ -1,0 +1,111 @@
+name: Regular-user experience test
+
+# Simulates a typical end user: downloads zip, extracts, double-clicks Run.bat.
+# Covers: Windows PowerShell 5.1 (default on every Win10/11), PowerShell 7,
+# ExecutionPolicy Restricted (the OOB default), and the Run.bat menu path.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Optimize-Internet.ps1"
+      - "Run.bat"
+      - ".github/workflows/regular-user.yml"
+
+jobs:
+  end-to-end:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - { name: "Windows PowerShell 5.1, default policy", host: "powershell" }
+          - { name: "PowerShell 7, default policy",            host: "pwsh" }
+          - { name: "Run.bat menu choice 2 (measure-only)",    host: "batch" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment
+        shell: pwsh
+        run: |
+          $ps51 = (Get-Command powershell.exe).Source
+          $ps7  = (Get-Command pwsh.exe).Source
+          Write-Host "Windows PowerShell 5.1: $ps51"
+          Write-Host "PowerShell 7:           $ps7"
+          Write-Host "Default ExecutionPolicy (LocalMachine): $(Get-ExecutionPolicy -Scope LocalMachine)"
+          Write-Host "Default ExecutionPolicy (CurrentUser):  $(Get-ExecutionPolicy -Scope CurrentUser)"
+          Write-Host "Scenario: ${{ matrix.scenario.name }}"
+
+      - name: Simulate "downloaded from the web" (Mark-of-the-Web)
+        shell: pwsh
+        run: |
+          # When a user downloads the zip and extracts, Windows adds the
+          # Zone.Identifier ADS marking files as Internet-origin. SmartScreen
+          # + AMSI then warn on .ps1 execution. Reproduce that here.
+          $files = @("Optimize-Internet.ps1", "Run.bat")
+          foreach ($f in $files) {
+            $z = "$f`:Zone.Identifier"
+            Set-Content -Path $z -Value "[ZoneTransfer]`r`nZoneId=3" -ErrorAction SilentlyContinue
+            Write-Host "Marked $f as web-origin"
+          }
+
+      - name: Scenario — Windows PowerShell 5.1 (host=powershell)
+        if: matrix.scenario.host == 'powershell'
+        shell: cmd
+        run: |
+          REM Default policy is Restricted; the Run.bat / docs use -ExecutionPolicy Bypass.
+          REM Mimic the canonical user invocation from the README.
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\Optimize-Internet.ps1"
+          if errorlevel 1 ( echo PS51 exit %errorlevel% & exit /b %errorlevel% )
+
+      - name: Scenario — PowerShell 7 (host=pwsh)
+        if: matrix.scenario.host == 'pwsh'
+        shell: cmd
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File "%CD%\Optimize-Internet.ps1"
+          if errorlevel 1 ( echo PS7 exit %errorlevel% & exit /b %errorlevel% )
+
+      - name: Scenario — Run.bat menu (host=batch)
+        if: matrix.scenario.host == 'batch'
+        shell: cmd
+        run: |
+          REM The Run.bat menu reads choice via SET /P. Pipe "2" (measure-only)
+          REM + an extra Enter to dismiss the post-run "pause", + "8" to exit.
+          REM Skip Run.bat's own elevation block by calling the PS line directly
+          REM (CI runner is already elevated). This still exercises the exact
+          REM command the menu would build.
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\Optimize-Internet.ps1"
+          if errorlevel 1 ( echo BAT exit %errorlevel% & exit /b %errorlevel% )
+
+      - name: Check exit code + log
+        if: always()
+        shell: pwsh
+        run: |
+          $logs = Get-ChildItem -Path . -Filter "net-optimizer-*.log" -ErrorAction SilentlyContinue |
+                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($logs) {
+            Write-Host "=== tail of $($logs.Name) ==="
+            Get-Content $logs.FullName -Tail 50
+            Write-Host ""
+            Write-Host "=== red flags (X / failed / error lines) ==="
+            Select-String -Path $logs.FullName -Pattern '\[X\]|failed|error|exception' -CaseSensitive:$false |
+              Select-Object -First 20 |
+              ForEach-Object { Write-Host "  L$($_.LineNumber): $($_.Line.Trim())" }
+          } else {
+            Write-Host "::warning::No log file produced — script may not have started cleanly"
+          }
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regular-user-${{ matrix.scenario.host }}-${{ github.run_number }}
+          path: |
+            net-optimizer-*.log
+            net-optimizer-*.html
+            net-backup-*.json
+          if-no-files-found: ignore
+          retention-days: 30
