@@ -63,15 +63,15 @@ jobs:
         shell: pwsh
         run: |
           $mode = "${{ inputs.mode || 'measure-only' }}"
-          $args = @()
+          $params = @{}
           switch ($mode) {
-            "report"  { $args += "-Report" }
-            "apply"   { $args += "-Apply", "-Report" }
-            "revert"  { $args += "-Revert" }
-            default   { }  # measure-only = no args
+            "report"  { $params['Report'] = $true }
+            "apply"   { $params['Apply']  = $true; $params['Report'] = $true }
+            "revert"  { $params['Revert'] = $true }
+            default   { }  # measure-only = no params
           }
-          Write-Host "Running: .\Optimize-Internet.ps1 $($args -join ' ')"
-          & .\Optimize-Internet.ps1 @args
+          Write-Host "Running: .\Optimize-Internet.ps1 (mode=$mode)"
+          & .\Optimize-Internet.ps1 @params
           Write-Host "ExitCode: $LASTEXITCODE"
 
       - name: Show generated log (tail)
