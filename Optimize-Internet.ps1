@@ -286,24 +286,74 @@ function Get-OptimalMtu {
   if ($best) { return ($best + 28) } else { return $null }
 }
 
+# First-hop latency: pings the default gateway to isolate "home network slow"
+# from "ISP slow". If first-hop is >10 ms or has loss, the bottleneck is wifi
+# or the router, NOT the internet connection itself.
+function Test-FirstHop {
+  $gw = (Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+         Where-Object { $_.NetProfile.IPv4Connectivity -eq 'Internet' } |
+         Select-Object -First 1).IPv4DefaultGateway.NextHop
+  if (-not $gw) { return $null }
+  $p = New-Object System.Net.NetworkInformation.Ping
+  $lat = @(); $loss = 0
+  for ($i=0; $i -lt 6; $i++) {
+    try { $r = $p.Send($gw, 1000); if ($r.Status -eq 'Success') { $lat += $r.RoundtripTime } else { $loss++ } }
+    catch { $loss++ }
+    Start-Sleep -Milliseconds 80
+  }
+  [pscustomobject]@{
+    Gateway = $gw
+    AvgMs   = if ($lat.Count) { [math]::Round(($lat | Measure-Object -Average).Average,1) } else { $null }
+    LossPct = [math]::Round($loss/6*100,0)
+  }
+}
+
+# Top processes by active TCP connections — diagnostic only. Helps when "slow
+# internet" is actually OneDrive/Steam/Windows-Update saturating bandwidth.
+function Get-NetworkHogs {
+  param([int]$Top = 5)
+  $conns = Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue
+  if (-not $conns) { return @() }
+  $byPid = $conns | Where-Object OwningProcess -gt 0 |
+           Group-Object OwningProcess |
+           Sort-Object Count -Descending | Select-Object -First $Top
+  foreach ($g in $byPid) {
+    $proc = Get-Process -Id ([int]$g.Name) -ErrorAction SilentlyContinue
+    if ($proc) {
+      [pscustomobject]@{ Pid = $g.Name; Name = $proc.ProcessName; Connections = $g.Count }
+    }
+  }
+}
+
 # ── Read the CURRENT Windows network settings (for auto-detect) ──────────────
 function Get-NetworkState {
   $ad = Get-ActiveAdapter
   $throttle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
   if ($null -eq $throttle) { $throttle = 10 }   # Windows default = throttled
-  $auto = 'unknown'; $rss = 'unknown'
+  $auto = 'unknown'; $rss = 'unknown'; $ecn = 'unknown'
   try {
     $g = netsh int tcp show global
-    if (($g | Select-String 'Auto-Tuning Level') -match ':\s*(\w+)') { $auto = $Matches[1] }
-    if (($g | Select-String 'Receive-Side Scaling State') -match ':\s*(\w+)') { $rss = $Matches[1] }
+    if (($g | Select-String 'Auto-Tuning Level')        -match ':\s*(\w+)') { $auto = $Matches[1] }
+    if (($g | Select-String 'Receive-Side Scaling State') -match ':\s*(\w+)') { $rss  = $Matches[1] }
+    if (($g | Select-String 'ECN Capability')           -match ':\s*(\w+)') { $ecn  = $Matches[1] }
   } catch {}
   $nicPower = $null
   if ($ad) { try { $nicPower = (Get-NetAdapterPowerManagement -Name $ad.Name -ErrorAction Stop).AllowComputerToTurnOffDevice } catch {} }
   $powerSaver = ((powercfg /getactivescheme) -join ' ') -match 'Power saver'
   $dns = @(); if ($ad) { $dns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
+  $eee = $null
+  if ($ad) {
+    try { $eee = (Get-NetAdapterAdvancedProperty -Name $ad.Name -ErrorAction SilentlyContinue |
+                  Where-Object DisplayName -match 'Energy.Efficient.Ethernet|Green.Ethernet' |
+                  Select-Object -First 1).DisplayValue } catch {}
+  }
+  $doMaxUp = $null
+  try { $doMaxUp = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization' `
+                    -Name 'DOPercentageMaxBackgroundBandwidth' -ErrorAction SilentlyContinue).DOPercentageMaxBackgroundBandwidth } catch {}
   [pscustomobject]@{
-    Adapter = $ad; Throttle = $throttle; Autotuning = $auto; Rss = $rss
+    Adapter = $ad; Throttle = $throttle; Autotuning = $auto; Rss = $rss; Ecn = $ecn
     NicPower = $nicPower; PowerSaver = $powerSaver; Dns = $dns
+    Eee = $eee; DoMaxUpload = $doMaxUp
   }
 }
 
@@ -313,12 +363,26 @@ function Backup-Settings {
   $curDns = @(); if ($ad) { $curDns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
   $curThrottle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
   if ($null -eq $curThrottle) { $curThrottle = 10 }
-  $curAuto = 'normal'
-  try { $a = netsh int tcp show global | Select-String 'Auto-Tuning Level'; if ($a -match ':\s*(\w+)') { $curAuto = $Matches[1] } } catch {}
+  $curAuto = 'normal'; $curEcn = 'disabled'
+  try {
+    $g = netsh int tcp show global
+    if (($g | Select-String 'Auto-Tuning Level') -match ':\s*(\w+)') { $curAuto = $Matches[1] }
+    if (($g | Select-String 'ECN Capability')    -match ':\s*(\w+)') { $curEcn  = $Matches[1] }
+  } catch {}
   $curScheme = (powercfg /getactivescheme) -replace '.*GUID:\s*([\w-]+).*','$1'
+  $curEee = $null
+  if ($ad) {
+    try { $curEee = (Get-NetAdapterAdvancedProperty -Name $ad.Name -ErrorAction SilentlyContinue |
+                     Where-Object DisplayName -match 'Energy.Efficient.Ethernet|Green.Ethernet' |
+                     Select-Object -First 1).DisplayValue } catch {}
+  }
+  $curDoUp = $null
+  try { $curDoUp = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization' `
+                    -Name 'DOPercentageMaxBackgroundBandwidth' -ErrorAction SilentlyContinue).DOPercentageMaxBackgroundBandwidth } catch {}
   $obj = [pscustomobject]@{
     Timestamp = (Get-Date).ToString('s'); AdapterName = $ad.Name; DnsServers = $curDns
     NetworkThrottlingIndex = $curThrottle; AutotuningLevel = $curAuto; PowerScheme = $curScheme
+    EcnCapability = $curEcn; Eee = $curEee; DoMaxUpload = $curDoUp
   }
   $path = Join-Path $ScriptDir ("net-backup-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
   $obj | ConvertTo-Json | Set-Content $path
@@ -573,6 +637,19 @@ function Run-Diagnostics {
   }
   else { Bad "Ping: no response from 1.1.1.1" }
 
+  # First-hop: ping the home gateway. >10 ms or loss = home wifi/router is
+  # the bottleneck, not the ISP. Only shown on BEFORE pass (doesn't change).
+  $fh = $null
+  if ($Phase -eq 'BEFORE') {
+    $fh = Test-FirstHop
+    if ($fh) {
+      if ($fh.AvgMs -ne $null) {
+        $col = if ($fh.AvgMs -lt 5 -and $fh.LossPct -eq 0) { 'Green' } elseif ($fh.AvgMs -lt 15) { 'Yellow' } else { 'Red' }
+        Say ("  Gateway : {0} ms to {1}, {2}% loss" -f $fh.AvgMs,$fh.Gateway,$fh.LossPct) $col
+      } else { Warn "Gateway ping: no response (router may block ICMP)" }
+    }
+  }
+
   Say "  Download: testing (4 parallel streams from Cloudflare)..."
   $dl = Test-DownloadParallel
   if (-not $dl) { $dl = Test-Download }   # fall back to single-stream if parallel failed
@@ -596,7 +673,21 @@ function Run-Diagnostics {
     $dnsResults[$k] = $avg
     Say ("           {0,-16} {1}" -f $k, ($(if ($avg) { "$avg ms" } else { 'failed' })))
   }
-  [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Bufferbloat = $bloat; Dns = $dnsResults }
+
+  # Heaviest bandwidth users right now — diagnostic only. Useful when results
+  # look bad because something is eating bandwidth in the background.
+  $hogs = @()
+  if ($Phase -eq 'BEFORE') {
+    $hogs = Get-NetworkHogs -Top 5
+    if ($hogs.Count) {
+      Say "  Active  : top processes by open TCP connections —"
+      foreach ($h in $hogs) {
+        Say ("           {0,-20} {1,3} connections (pid {2})" -f $h.Name, $h.Connections, $h.Pid)
+      }
+    }
+  }
+
+  [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Bufferbloat = $bloat; Dns = $dnsResults; Hogs = $hogs; FirstHop = $fh }
 }
 
 # ── REVERT ───────────────────────────────────────────────────────────────────
@@ -621,7 +712,33 @@ if ($Revert) {
       -Name 'NetworkThrottlingIndex' -Value ([int]$b.NetworkThrottlingIndex) -Type DWord -ErrorAction SilentlyContinue
     Good "NetworkThrottlingIndex restored to $($b.NetworkThrottlingIndex)"
     if ($b.AutotuningLevel) { netsh int tcp set global autotuninglevel=$($b.AutotuningLevel) | Out-Null; Good "TCP autotuning restored" }
+    if ($b.EcnCapability)   { netsh int tcp set global ecncapability=$($b.EcnCapability) | Out-Null; Good "TCP ECN restored to $($b.EcnCapability)" }
     if ($b.PowerScheme)     { powercfg /setactive $b.PowerScheme 2>$null; Good "Power plan restored" }
+    # Delivery Optimization upload cap — restore previous value, or remove the
+    # policy entirely if there wasn't one (so Windows defaults take over again).
+    try {
+      $doKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+      if ($null -ne $b.DoMaxUpload) {
+        if (-not (Test-Path $doKey)) { New-Item -Path $doKey -Force | Out-Null }
+        Set-ItemProperty -Path $doKey -Name 'DOPercentageMaxBackgroundBandwidth' -Value ([int]$b.DoMaxUpload) -Type DWord -Force
+        Good "Delivery Optimization cap restored to $($b.DoMaxUpload)%"
+      } elseif (Test-Path $doKey) {
+        Remove-ItemProperty -Path $doKey -Name 'DOPercentageMaxBackgroundBandwidth' -ErrorAction SilentlyContinue
+        Good "Delivery Optimization policy removed (back to default)"
+      }
+    } catch { Warn "DO revert skipped" }
+    # EEE — restore on the original adapter if the backup recorded a value
+    if ($b.Eee -and $b.AdapterName) {
+      try {
+        $eeeProp = Get-NetAdapterAdvancedProperty -Name $b.AdapterName -ErrorAction SilentlyContinue |
+                   Where-Object DisplayName -match 'Energy.Efficient.Ethernet|Green.Ethernet' |
+                   Select-Object -First 1
+        if ($eeeProp) {
+          Set-NetAdapterAdvancedProperty -Name $b.AdapterName -DisplayName $eeeProp.DisplayName -DisplayValue $b.Eee -NoRestart -ErrorAction Stop
+          Good "EEE restored to $($b.Eee)"
+        }
+      } catch { Warn "EEE revert skipped" }
+    }
     ipconfig /flushdns | Out-Null
     Say ""; Good "Revert complete."
   } catch { Bad "Revert error: $($_.Exception.Message)" }
@@ -793,7 +910,37 @@ if ($mtu -and $mtu -lt 1500 -and $mtu -ge 1400 -and $ad) {
   catch { Warn "MTU change skipped" }
 } elseif ($mtu) { Say "  MTU: optimal is $mtu (already fine / left as-is)" 'DarkGray' }
 
-# 7) Flush DNS so the new resolver takes effect immediately
+# 7) TCP ECN — lets modern routers signal congestion before dropping packets.
+#    Default is OFF on Windows; nearly all current ISPs and routers support it,
+#    so enabling reduces retransmits & smooths throughput.
+try { netsh int tcp set global ecncapability=enabled | Out-Null; Good "TCP ECN enabled" }
+catch { Warn "ECN tweak skipped" }
+
+# 8) Delivery Optimization — Windows Update peer-shares to other PCs by default
+#    and can saturate your upload. Cap to 20% so you keep your bandwidth.
+try {
+  $doKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+  if (-not (Test-Path $doKey)) { New-Item -Path $doKey -Force | Out-Null }
+  Set-ItemProperty -Path $doKey -Name 'DOPercentageMaxBackgroundBandwidth' -Value 20 -Type DWord -Force
+  Good "Delivery Optimization upload cap: 20%"
+} catch { Warn "Delivery Optimization tweak skipped" }
+
+# 9) Energy Efficient Ethernet (EEE / Green Ethernet) — known cause of latency
+#    spikes and packet loss on wired connections. Silently skipped on adapters
+#    that don't expose it (most Wi-Fi adapters).
+if ($ad) {
+  try {
+    $eeeProp = Get-NetAdapterAdvancedProperty -Name $ad.Name -ErrorAction SilentlyContinue |
+               Where-Object DisplayName -match 'Energy.Efficient.Ethernet|Green.Ethernet' |
+               Select-Object -First 1
+    if ($eeeProp) {
+      Set-NetAdapterAdvancedProperty -Name $ad.Name -DisplayName $eeeProp.DisplayName -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop
+      Good "Disabled Energy Efficient Ethernet"
+    }
+  } catch { Warn "EEE tweak skipped (driver may not support it)" }
+}
+
+# 10) Flush DNS so the new resolver takes effect immediately
 ipconfig /flushdns | Out-Null; Good "Flushed DNS cache"
 
 # 8) Optional latency tweak for gaming/voice (disable Nagle)
