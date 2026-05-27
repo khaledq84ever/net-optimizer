@@ -30,9 +30,12 @@ jobs:
       - name: Show environment
         shell: pwsh
         run: |
+          $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          $admin     = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
           Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
           Write-Host "OS:         $([System.Environment]::OSVersion.VersionString)"
-          Write-Host "Admin:      $([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent().IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          Write-Host "Admin:      $admin"
 
       - name: Parse-only sanity check
         shell: pwsh
