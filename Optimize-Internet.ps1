@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Measure and improve a Windows PC's internet connection — safely.
+  Measure and improve a Windows PC's internet connection - safely.
 
 .DESCRIPTION
   Focused on real, measurable wins (no snake-oil):
@@ -12,7 +12,7 @@
     * Measures download speed, ping, packet loss and DNS time BEFORE and AFTER
       so you can see the difference.
 
-  It cannot exceed the bandwidth your ISP gives you — nothing can. What it does
+  It cannot exceed the bandwidth your ISP gives you - nothing can. What it does
   is remove the things that hold Windows BELOW that ceiling.
 
   SAFE BY DESIGN:
@@ -29,7 +29,7 @@
 
 .PARAMETER Gaming
   Also reduce latency (disable Nagle's algorithm on the active adapter).
-  Slightly higher CPU/packet overhead — only worth it for gaming/voice.
+  Slightly higher CPU/packet overhead - only worth it for gaming/voice.
 
 .EXAMPLE
   # 1) See where you stand + what it would change (no changes made):
@@ -54,7 +54,7 @@ param(
   [switch]$Report        # also write a shareable HTML report next to the script
 )
 
-# ── Elevate to Administrator (changes + some reads need it) ──────────────────
+# -- Elevate to Administrator (changes + some reads need it) ------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
           ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
@@ -75,7 +75,7 @@ $ErrorActionPreference = 'Continue'
 # CRITICAL on Windows PowerShell 5.1: the IWR progress bar throttles downloads
 # ~10x, which would make the speed test read falsely low. Turn it off.
 $ProgressPreference = 'SilentlyContinue'
-# PS 5.1 defaults to old TLS that Cloudflare rejects — force TLS 1.2 so the
+# PS 5.1 defaults to old TLS that Cloudflare rejects - force TLS 1.2 so the
 # speed test (https) actually connects.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 # .NET Framework caps outbound connections per host at 2 by default, which would
@@ -92,7 +92,7 @@ $Log = Join-Path $ScriptDir ("net-optimizer-{0}.log" -f (Get-Date -Format 'yyyyM
 
 # Force every file write in this script to UTF-8 so PowerShell 5.1 (default
 # on every Win10/11) doesn't ANSI-encode the em dashes and Unicode chars we
-# use — without this the log shows '?' instead of '—' for ~95% of users.
+# use - without this the log shows '?' instead of '-' for ~95% of users.
 $PSDefaultParameterValues['Add-Content:Encoding'] = 'UTF8'
 $PSDefaultParameterValues['Set-Content:Encoding'] = 'UTF8'
 $PSDefaultParameterValues['Out-File:Encoding']    = 'UTF8'
@@ -100,17 +100,17 @@ $PSDefaultParameterValues['Out-File:Encoding']    = 'UTF8'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 function Say   { param($m,$c='Gray') Write-Host $m -ForegroundColor $c; Add-Content $Log $m }
-function Head  { param($m) Write-Host ""; Write-Host "── $m ──" -ForegroundColor Cyan; Add-Content $Log "== $m ==" }
+function Head  { param($m) Write-Host ""; Write-Host "-- $m --" -ForegroundColor Cyan; Add-Content $Log "== $m ==" }
 function Good  { param($m) Say "  [OK] $m" 'Green' }
 function Warn  { param($m) Say "  [!]  $m" 'Yellow' }
 function Bad   { param($m) Say "  [X]  $m" 'Red' }
 
-# ── Preflight: this tool is Windows-only and uses cmdlets from Win8/Win10+ ────
-# NB: don't name this $isWindows — that's a read-only automatic variable in
+# -- Preflight: this tool is Windows-only and uses cmdlets from Win8/Win10+ ----
+# NB: don't name this $isWindows - that's a read-only automatic variable in
 # PowerShell 7, and assigning to it throws.
 $onWindows = ($env:OS -eq 'Windows_NT') -or ($PSVersionTable.Platform -eq 'Win32NT') -or ($null -eq $PSVersionTable.Platform)
 if (-not $onWindows) {
-  Bad "This tool only works on Windows (it tunes Windows networking settings). Detected a non-Windows OS — exiting."
+  Bad "This tool only works on Windows (it tunes Windows networking settings). Detected a non-Windows OS - exiting."
   return
 }
 if ($PSVersionTable.PSVersion.Major -lt 5) {
@@ -123,7 +123,7 @@ if ($missing.Count) {
   Warn "Some Windows networking cmdlets are missing ($($missing -join ', ')). The script will still run and skip anything unavailable."
 }
 
-# ── Helpers: the active internet adapter ─────────────────────────────────────
+# -- Helpers: the active internet adapter -------------------------------------
 function Get-ActiveAdapter {
   # The adapter that actually carries the default route to the internet.
   $r = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
@@ -132,7 +132,7 @@ function Get-ActiveAdapter {
   Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
 }
 
-# ── Measurements ─────────────────────────────────────────────────────────────
+# -- Measurements -------------------------------------------------------------
 function Test-Ping {
   param([string]$Target = '1.1.1.1', [int]$Count = 12)
   $p = New-Object System.Net.NetworkInformation.Ping
@@ -198,7 +198,7 @@ function New-HttpClient {
 }
 
 function Test-DownloadParallel {
-  # Several simultaneous streams — a single TCP stream rarely saturates a fast
+  # Several simultaneous streams - a single TCP stream rarely saturates a fast
   # line, so one-stream tests undercount. Total bytes / wall-clock = real speed.
   param([int]$Streams = 4, [int64]$BytesPerStream = 10000000, [int]$TimeoutSec = 60)
   $base = 'https://speed.cloudflare.com/__down?bytes='
@@ -290,7 +290,7 @@ function Get-OptimalMtu {
     $out = ping.exe $Target -n 1 -f -l $mid -w 1500 2>$null
     if ($out -match 'TTL=') { $best = $mid; $lo = $mid + 1 }
     elseif ($out -match 'fragmented|too big|must be fragmented') { $hi = $mid - 1 }
-    else { break }   # unreachable / blocks ICMP — bail
+    else { break }   # unreachable / blocks ICMP - bail
   }
   if ($best) { return ($best + 28) } else { return $null }
 }
@@ -317,7 +317,7 @@ function Test-FirstHop {
   }
 }
 
-# Top processes by active TCP connections — diagnostic only. Helps when "slow
+# Top processes by active TCP connections - diagnostic only. Helps when "slow
 # internet" is actually OneDrive/Steam/Windows-Update saturating bandwidth.
 function Get-NetworkHogs {
   param([int]$Top = 5)
@@ -334,7 +334,7 @@ function Get-NetworkHogs {
   }
 }
 
-# ── Read the CURRENT Windows network settings (for auto-detect) ──────────────
+# -- Read the CURRENT Windows network settings (for auto-detect) --------------
 function Get-NetworkState {
   $ad = Get-ActiveAdapter
   $throttle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
@@ -369,7 +369,7 @@ function Get-NetworkState {
   }
 }
 
-# ── Save a restore point before changing anything ────────────────────────────
+# -- Save a restore point before changing anything ----------------------------
 function Backup-Settings {
   $ad = Get-ActiveAdapter
   $curDns = @(); if ($ad) { $curDns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
@@ -426,10 +426,10 @@ function Show-BeforeAfter {
   Say ("  DNS      : " + (_d $bDns $aDns 'ms' $true)) 'White'
 }
 
-# ── Overall connection-quality grade ─────────────────────────────────────────
+# -- Overall connection-quality grade -----------------------------------------
 function Get-QualityGrade {
-  # Scores the metrics that DON'T depend on your ISP plan — ping, jitter, loss,
-  # bufferbloat — so it grades responsiveness, not how big a plan you pay for.
+  # Scores the metrics that DON'T depend on your ISP plan - ping, jitter, loss,
+  # bufferbloat - so it grades responsiveness, not how big a plan you pay for.
   param($d)
   $score = 100.0
   $ping = $d.Ping.AvgMs; $jit = $d.Ping.JitterMs; $loss = $d.Ping.LossPct
@@ -446,7 +446,7 @@ function Get-QualityGrade {
   [pscustomobject]@{ Score = $score; Grade = $letter }
 }
 
-# ── Shareable HTML report (great for sending your ISP) ───────────────────────
+# -- Shareable HTML report (great for sending your ISP) -----------------------
 function Write-HtmlReport {
   param($Before, $After)
   $hasAfter = $null -ne $After
@@ -525,13 +525,13 @@ td{padding:13px 16px;border-top:1px solid #1e2640}
   $html = @"
 <!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Internet Quality Report — $when</title><style>$css</style></head>
+<title>Internet Quality Report - $when</title><style>$css</style></head>
 <body><div class=wrap>
 <div class=head><div class=logo>&#9889;</div>
 <div><h1>Internet Quality Report</h1><p class=sub>$adapter &middot; $when</p></div></div>
 <div class=grade>
 <div class=gbig style="color:$gColor">$($q.Grade)</div>
-<div class=gmeta><div class=gscore>Connection quality score: <b style="color:#e5e7eb">$($q.Score)/100</b><br>(responsiveness — independent of your ISP plan size)</div>
+<div class=gmeta><div class=gscore>Connection quality score: <b style="color:#e5e7eb">$($q.Score)/100</b><br>(responsiveness - independent of your ISP plan size)</div>
 <div class=bar><div class=barfill style="width:$($q.Score)%;background:$barColor"></div></div></div>
 </div>
 <table><thead><tr><th>Metric</th><th>$(if ($hasAfter) { 'Before' } else { 'Result' })</th>$afterHead</tr></thead>
@@ -547,7 +547,7 @@ $rowsHtml
   return $path
 }
 
-# ── Stability watchdog ───────────────────────────────────────────────────────
+# -- Stability watchdog -------------------------------------------------------
 function Test-Online {
   param([string[]]$Targets)
   foreach ($t in $Targets) {
@@ -585,7 +585,7 @@ function Start-Watchdog {
           $dur = ($now - $downStart).TotalMilliseconds
           $outages++; $totalDownMs += $dur; if ($dur -gt $longestMs) { $longestMs = $dur }
           $secs = [math]::Round($dur / 1000, 1)
-          Good ("RECOVERED at {0} — outage lasted {1}s" -f $now.ToString('HH:mm:ss'), $secs)
+          Good ("RECOVERED at {0} - outage lasted {1}s" -f $now.ToString('HH:mm:ss'), $secs)
           LogEvt 'UP' "outage_sec=$secs"
           $down = $false; $downStart = $null
         }
@@ -595,13 +595,13 @@ function Start-Watchdog {
         $consecFails++
         if (-not $down -and $consecFails -ge $FailsToDown) {
           $down = $true; $downStart = $now
-          Bad ("DOWN at {0} — no reply from any target" -f $now.ToString('HH:mm:ss'))
+          Bad ("DOWN at {0} - no reply from any target" -f $now.ToString('HH:mm:ss'))
           LogEvt 'DOWN' "after_${FailsToDown}_failed_checks"
         }
         if ($down -and $AutoReset -and (($now - $downStart).TotalSeconds -ge $ResetAfterSec) -and (($now - $lastReset).TotalSeconds -ge $resetCooldownSec)) {
           $ad = Get-ActiveAdapter
           if ($ad) {
-            Warn ("Sustained outage — resetting adapter '{0}'..." -f $ad.Name)
+            Warn ("Sustained outage - resetting adapter '{0}'..." -f $ad.Name)
             try { Restart-NetAdapter -Name $ad.Name -Confirm:$false -ErrorAction Stop; LogEvt 'RESET' "adapter=$($ad.Name)" }
             catch { Bad "Adapter reset failed: $($_.Exception.Message)"; LogEvt 'RESET_FAIL' $_.Exception.Message }
             $lastReset = Get-Date
@@ -611,7 +611,7 @@ function Start-Watchdog {
       if (($now - $lastBeat).TotalSeconds -ge 30) {
         $totalMs = ($now - $start).TotalMilliseconds
         $up = if ($totalMs -gt 0) { [math]::Round(100 - ($totalDownMs / $totalMs * 100), 2) } else { 100 }
-        Say ("  [{0}] alive · {1} min · outages {2} · uptime {3}%{4}" -f $now.ToString('HH:mm:ss'), [math]::Round($totalMs / 60000, 1), $outages, $up, $(if ($down) { ' · CURRENTLY DOWN' } else { '' })) 'DarkGray'
+        Say ("  [{0}] alive - {1} min - outages {2} - uptime {3}%{4}" -f $now.ToString('HH:mm:ss'), [math]::Round($totalMs / 60000, 1), $outages, $up, $(if ($down) { ' - CURRENTLY DOWN' } else { '' })) 'DarkGray'
         $lastBeat = $now
       }
       Start-Sleep -Seconds $IntervalSec
@@ -690,13 +690,13 @@ function Run-Diagnostics {
     Say ("           {0,-16} {1}" -f $k, ($(if ($avg) { "$avg ms" } else { 'failed' })))
   }
 
-  # Heaviest bandwidth users right now — diagnostic only. Useful when results
+  # Heaviest bandwidth users right now - diagnostic only. Useful when results
   # look bad because something is eating bandwidth in the background.
   $hogs = @()
   if ($Phase -eq 'BEFORE') {
     $hogs = Get-NetworkHogs -Top 5
     if ($hogs.Count) {
-      Say "  Active  : top processes by open TCP connections —"
+      Say "  Active  : top processes by open TCP connections -"
       foreach ($h in $hogs) {
         Say ("           {0,-20} {1,3} connections (pid {2})" -f $h.Name, $h.Connections, $h.Pid)
       }
@@ -706,12 +706,12 @@ function Run-Diagnostics {
   [pscustomobject]@{ Ping = $ping; Download = $dl; Upload = $ul; Bufferbloat = $bloat; Dns = $dnsResults; Hogs = $hogs; FirstHop = $fh }
 }
 
-# ── REVERT ───────────────────────────────────────────────────────────────────
+# -- REVERT -------------------------------------------------------------------
 if ($Revert) {
   Head "Revert"
   $backup = Get-ChildItem -Path $ScriptDir -Filter 'net-backup-*.json' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $backup) { Bad "No backup file found in $ScriptDir — nothing to revert."; return }
+  if (-not $backup) { Bad "No backup file found in $ScriptDir - nothing to revert."; return }
   Say "  Restoring from $($backup.Name)"
   $b = Get-Content $backup.FullName -Raw | ConvertFrom-Json
   try {
@@ -730,7 +730,7 @@ if ($Revert) {
     if ($b.AutotuningLevel) { netsh int tcp set global autotuninglevel=$($b.AutotuningLevel) | Out-Null; Good "TCP autotuning restored" }
     if ($b.EcnCapability)   { netsh int tcp set global ecncapability=$($b.EcnCapability) | Out-Null; Good "TCP ECN restored to $($b.EcnCapability)" }
     if ($b.Timestamps)      { netsh int tcp set global timestamps=$($b.Timestamps) | Out-Null; Good "TCP timestamps restored to $($b.Timestamps)" }
-    # Reserved bandwidth — restore previous value, or remove policy entirely
+    # Reserved bandwidth - restore previous value, or remove policy entirely
     try {
       $qosKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched'
       if ($null -ne $b.ReservedBandwidth) {
@@ -743,7 +743,7 @@ if ($Revert) {
       }
     } catch { Warn "Reserved bandwidth revert skipped" }
     if ($b.PowerScheme)     { powercfg /setactive $b.PowerScheme 2>$null; Good "Power plan restored" }
-    # Delivery Optimization upload cap — restore previous value, or remove the
+    # Delivery Optimization upload cap - restore previous value, or remove the
     # policy entirely if there wasn't one (so Windows defaults take over again).
     try {
       $doKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
@@ -756,7 +756,7 @@ if ($Revert) {
         Good "Delivery Optimization policy removed (back to default)"
       }
     } catch { Warn "DO revert skipped" }
-    # EEE — restore on the original adapter if the backup recorded a value
+    # EEE - restore on the original adapter if the backup recorded a value
     if ($b.Eee -and $b.AdapterName) {
       try {
         $eeeProp = Get-NetAdapterAdvancedProperty -Name $b.AdapterName -ErrorAction SilentlyContinue |
@@ -774,13 +774,13 @@ if ($Revert) {
   return
 }
 
-# ── WATCH: stability watchdog (long-running; own branch) ─────────────────────
+# -- WATCH: stability watchdog (long-running; own branch) ---------------------
 if ($Watch) {
   Start-Watchdog -IntervalSec $WatchInterval -AutoReset:$AutoReset
   return
 }
 
-# ── HEADER ───────────────────────────────────────────────────────────────────
+# -- HEADER -------------------------------------------------------------------
 Say "==============================================" 'Cyan'
 Say " Internet Optimizer for Windows" 'Cyan'
 Say (" Mode: {0}" -f $(if ($Apply) { 'APPLY (will change settings)' } else { 'MEASURE-ONLY (no changes)' })) 'Cyan'
@@ -800,13 +800,13 @@ foreach ($k in $DnsCandidates.Keys) {
 Head "Recommendation"
 if ($fastestName) { Say ("  Fastest DNS for you: {0} ({1}) at {2} ms" -f $fastestName, $DnsCandidates[$fastestName], $fastestDns) 'White' }
 
-# ── AUTO mode: read -> detect only the REAL problems -> fix those -> re-test ──
+# -- AUTO mode: read -> detect only the REAL problems -> fix those -> re-test --
 if ($Auto) {
   Head "Auto-detecting problems"
   $state = Get-NetworkState
   $fixes = @()   # each: { Name; Detail; Action = scriptblock }
 
-  # 1) Slow DNS — switch only if current is meaningfully slower than the fastest.
+  # 1) Slow DNS - switch only if current is meaningfully slower than the fastest.
   $curDnsAvg = $before.Dns['Current (DHCP)']
   if ($fastestName -and $fastestDns -ne $null) {
     $alreadyFastest = $state.Dns -contains $DnsCandidates[$fastestName]
@@ -844,16 +844,16 @@ if ($Auto) {
     $fixes += [pscustomobject]@{ Name = 'Power-saver plan'; Detail = '-> High performance'; Action = { powercfg /setactive SCHEME_MIN 2>$null } }
   } else { Good "Power plan fine (not power-saver)" }
 
-  # Things a script genuinely can't fix — report honestly.
-  if ($before.Ping.LossPct -ge 2) { Warn "Packet loss ~$($before.Ping.LossPct)% — usually Wi-Fi signal or ISP. Move closer to the router or go wired." }
-  if ($before.Ping.AvgMs -ne $null -and $before.Ping.AvgMs -gt 80) { Warn "High ping ($($before.Ping.AvgMs) ms) — mostly distance/ISP; the fixes above help a little." }
+  # Things a script genuinely can't fix - report honestly.
+  if ($before.Ping.LossPct -ge 2) { Warn "Packet loss ~$($before.Ping.LossPct)% - usually Wi-Fi signal or ISP. Move closer to the router or go wired." }
+  if ($before.Ping.AvgMs -ne $null -and $before.Ping.AvgMs -gt 80) { Warn "High ping ($($before.Ping.AvgMs) ms) - mostly distance/ISP; the fixes above help a little." }
   if ($before.Bufferbloat -and $before.Bufferbloat.Grade -in 'C','D','F') {
-    Warn "Bufferbloat grade $($before.Bufferbloat.Grade) (ping jumps +$($before.Bufferbloat.IncreaseMs) ms under load) — this causes lag spikes in games/calls. Windows can't fix it; enable SQM/QoS (look for 'Smart Queue', 'Cake', or 'Bufferbloat') on your ROUTER, or cap your speeds slightly below the line rate."
+    Warn "Bufferbloat grade $($before.Bufferbloat.Grade) (ping jumps +$($before.Bufferbloat.IncreaseMs) ms under load) - this causes lag spikes in games/calls. Windows can't fix it; enable SQM/QoS (look for 'Smart Queue', 'Cake', or 'Bufferbloat') on your ROUTER, or cap your speeds slightly below the line rate."
   }
 
   if ($fixes.Count -eq 0) {
     Head "Nothing to fix"
-    Good "Your connection is already optimally configured — nothing changed."
+    Good "Your connection is already optimally configured - nothing changed."
     $qg = Get-QualityGrade $before
     Say ("  Connection quality: {0}  ({1}/100)" -f $qg.Grade, $qg.Score) 'White'
     if ($Report) { $rp = Write-HtmlReport -Before $before; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
@@ -861,7 +861,7 @@ if ($Auto) {
     return
   }
 
-  Head ("Found {0} issue(s) — fixing automatically" -f $fixes.Count)
+  Head ("Found {0} issue(s) - fixing automatically" -f $fixes.Count)
   $backupPath = Backup-Settings
   Good "Backup saved -> $backupPath  (undo anytime with -Revert)"
   foreach ($f in $fixes) {
@@ -888,13 +888,13 @@ if (-not $Apply) {
   $qg = Get-QualityGrade $before
   Say ("  Connection quality: {0}  ({1}/100)" -f $qg.Grade, $qg.Score) 'White'
   if ($Report) { $rp = Write-HtmlReport -Before $before; Good "HTML report -> $rp"; try { Invoke-Item $rp } catch {} }
-  Warn "This was a MEASURE-ONLY run. Recommended next step — auto-detect & fix only what's wrong:"
+  Warn "This was a MEASURE-ONLY run. Recommended next step - auto-detect & fix only what's wrong:"
   Say  "     .\Optimize-Internet.ps1 -Auto" 'White'
   Say  "  Or apply ALL tweaks:  .\Optimize-Internet.ps1 -Apply   (add -Gaming for lower latency)" 'DarkGray'
   return
 }
 
-# ── APPLY ────────────────────────────────────────────────────────────────────
+# -- APPLY --------------------------------------------------------------------
 Head "Backing up current settings"
 $ad = Get-ActiveAdapter
 $backupPath = Backup-Settings
@@ -939,13 +939,13 @@ if ($mtu -and $mtu -lt 1500 -and $mtu -ge 1400 -and $ad) {
   catch { Warn "MTU change skipped" }
 } elseif ($mtu) { Say "  MTU: optimal is $mtu (already fine / left as-is)" 'DarkGray' }
 
-# 7) TCP ECN — lets modern routers signal congestion before dropping packets.
+# 7) TCP ECN - lets modern routers signal congestion before dropping packets.
 #    Default is OFF on Windows; nearly all current ISPs and routers support it,
 #    so enabling reduces retransmits & smooths throughput.
 try { netsh int tcp set global ecncapability=enabled | Out-Null; Good "TCP ECN enabled" }
 catch { Warn "ECN tweak skipped" }
 
-# 8) Delivery Optimization — Windows Update peer-shares to other PCs by default
+# 8) Delivery Optimization - Windows Update peer-shares to other PCs by default
 #    and can saturate your upload. Cap to 20% so you keep your bandwidth.
 try {
   $doKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
@@ -954,7 +954,7 @@ try {
   Good "Delivery Optimization upload cap: 20%"
 } catch { Warn "Delivery Optimization tweak skipped" }
 
-# 9) Energy Efficient Ethernet (EEE / Green Ethernet) — known cause of latency
+# 9) Energy Efficient Ethernet (EEE / Green Ethernet) - known cause of latency
 #    spikes and packet loss on wired connections. Silently skipped on adapters
 #    that don't expose it (most Wi-Fi adapters).
 if ($ad) {
@@ -969,7 +969,7 @@ if ($ad) {
   } catch { Warn "EEE tweak skipped (driver may not support it)" }
 }
 
-# 10) TCP Timestamps off — saves 12 bytes per packet header overhead. Modern
+# 10) TCP Timestamps off - saves 12 bytes per packet header overhead. Modern
 #     TCP doesn't need them (RTT measurement is done other ways now). Small
 #     but free latency win, especially noticeable on long-lived connections.
 try { netsh int tcp set global timestamps=disabled | Out-Null; Good "TCP timestamps disabled" }
@@ -1006,7 +1006,7 @@ if ($Gaming -and $ad) {
 Start-Sleep -Seconds 2
 $after = Run-Diagnostics -Phase 'AFTER'
 
-# ── BEFORE / AFTER SUMMARY ───────────────────────────────────────────────────
+# -- BEFORE / AFTER SUMMARY ---------------------------------------------------
 Head "Result (before -> after)"
 Show-BeforeAfter $before $after
 $qgB = Get-QualityGrade $before; $qgA = Get-QualityGrade $after

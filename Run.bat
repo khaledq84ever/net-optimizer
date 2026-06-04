@@ -2,7 +2,7 @@
 setlocal
 title Internet Optimizer
 
-:: ── Auto-elevate to Administrator ────────────────────────────────────────────
+:: -- Auto-elevate to Administrator --------------------------------------------
 net session >nul 2>&1
 if %errorlevel% neq 0 (
   echo Requesting Administrator access...
