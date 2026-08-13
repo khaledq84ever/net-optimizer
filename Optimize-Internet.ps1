@@ -736,9 +736,18 @@ if ($Revert) {
         }
       } catch { Warn "DNS revert skipped: $($_.Exception.Message)" }
     }
-    Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' `
-      -Name 'NetworkThrottlingIndex' -Value ([int]$b.NetworkThrottlingIndex) -Type DWord -ErrorAction SilentlyContinue
-    Good "NetworkThrottlingIndex restored to $($b.NetworkThrottlingIndex)"
+    # PowerShell 7 reads a disabled throttle (0xFFFFFFFF) as UInt32 4294967295,
+    # while Windows PowerShell 5.1 reads the same value as Int32 -1. A plain
+    # [int] cast throws on the PS7 value (out of Int32 range), which - since
+    # this sat outside its own try/catch - aborted every restore step after
+    # it. Reinterpret the raw 32 bits instead, which is correct either way.
+    try {
+      $throttleRaw = [int64]$b.NetworkThrottlingIndex
+      $throttleInt = [BitConverter]::ToInt32([BitConverter]::GetBytes([uint32]($throttleRaw -band 0xFFFFFFFF)), 0)
+      Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' `
+        -Name 'NetworkThrottlingIndex' -Value $throttleInt -Type DWord
+      Good "NetworkThrottlingIndex restored to $($b.NetworkThrottlingIndex)"
+    } catch { Warn "NetworkThrottlingIndex revert skipped: $($_.Exception.Message)" }
     if ($b.AutotuningLevel) { netsh int tcp set global autotuninglevel=$($b.AutotuningLevel) | Out-Null; Good "TCP autotuning restored" }
     if ($b.EcnCapability)   { netsh int tcp set global ecncapability=$($b.EcnCapability) | Out-Null; Good "TCP ECN restored to $($b.EcnCapability)" }
     if ($b.Timestamps)      { netsh int tcp set global timestamps=$($b.Timestamps) | Out-Null; Good "TCP timestamps restored to $($b.Timestamps)" }
