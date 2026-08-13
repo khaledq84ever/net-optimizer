@@ -375,13 +375,20 @@ function Backup-Settings {
   $curDns = @(); if ($ad) { $curDns = @((Get-DnsClientServerAddress -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses) }
   $curThrottle = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
   if ($null -eq $curThrottle) { $curThrottle = 10 }
-  $curAuto = 'normal'; $curEcn = 'disabled'; $curTs = 'disabled'
+  $curAuto = 'normal'; $curEcn = 'disabled'; $curTs = 'disabled'; $curRss = 'enabled'
   try {
     $g = netsh int tcp show global
-    if (($g | Select-String 'Auto-Tuning Level')   -match ':\s*(\w+)') { $curAuto = $Matches[1] }
-    if (($g | Select-String 'ECN Capability')      -match ':\s*(\w+)') { $curEcn  = $Matches[1] }
-    if (($g | Select-String 'RFC 1323 Timestamps') -match ':\s*(\w+)') { $curTs   = $Matches[1] }
+    if (($g | Select-String 'Auto-Tuning Level')          -match ':\s*(\w+)') { $curAuto = $Matches[1] }
+    if (($g | Select-String 'ECN Capability')             -match ':\s*(\w+)') { $curEcn  = $Matches[1] }
+    if (($g | Select-String 'RFC 1323 Timestamps')        -match ':\s*(\w+)') { $curTs   = $Matches[1] }
+    if (($g | Select-String 'Receive-Side Scaling State') -match ':\s*(\w+)') { $curRss  = $Matches[1] }
   } catch {}
+  # NIC power-saving and MTU: both get changed by -Apply/-Auto but were never
+  # captured here, so -Revert silently left them changed forever. Capture them.
+  $curNicPower = $null
+  if ($ad) { try { $curNicPower = (Get-NetAdapterPowerManagement -Name $ad.Name -ErrorAction Stop).AllowComputerToTurnOffDevice } catch {} }
+  $curMtu = $null
+  if ($ad) { try { $curMtu = (Get-NetIPInterface -InterfaceAlias $ad.Name -AddressFamily IPv4 -ErrorAction Stop).NlMtu } catch {} }
   $curRsvBw = $null
   try { $curRsvBw = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched' -Name 'NonBestEffortLimit' -ErrorAction SilentlyContinue).NonBestEffortLimit } catch {}
   $curScheme = (powercfg /getactivescheme) -replace '.*GUID:\s*([\w-]+).*','$1'
@@ -399,6 +406,7 @@ function Backup-Settings {
     NetworkThrottlingIndex = $curThrottle; AutotuningLevel = $curAuto; PowerScheme = $curScheme
     EcnCapability = $curEcn; Eee = $curEee; DoMaxUpload = $curDoUp
     Timestamps = $curTs; ReservedBandwidth = $curRsvBw
+    Rss = $curRss; NicPower = $curNicPower; Mtu = $curMtu
   }
   $path = Join-Path $ScriptDir ("net-backup-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
   $obj | ConvertTo-Json | Set-Content $path
@@ -715,14 +723,18 @@ if ($Revert) {
   Say "  Restoring from $($backup.Name)"
   $b = Get-Content $backup.FullName -Raw | ConvertFrom-Json
   try {
+    # DNS restore gets its own try/catch: if the adapter was renamed/unplugged
+    # since backup this throws, and it must NOT abort every restore step below.
     if ($b.AdapterName) {
-      if ($b.DnsServers -and $b.DnsServers.Count) {
-        Set-DnsClientServerAddress -InterfaceAlias $b.AdapterName -ServerAddresses $b.DnsServers -ErrorAction Stop
-        Good "DNS restored to $($b.DnsServers -join ', ')"
-      } else {
-        Set-DnsClientServerAddress -InterfaceAlias $b.AdapterName -ResetServerAddresses -ErrorAction Stop
-        Good "DNS reset to automatic (DHCP)"
-      }
+      try {
+        if ($b.DnsServers -and $b.DnsServers.Count) {
+          Set-DnsClientServerAddress -InterfaceAlias $b.AdapterName -ServerAddresses $b.DnsServers -ErrorAction Stop
+          Good "DNS restored to $($b.DnsServers -join ', ')"
+        } else {
+          Set-DnsClientServerAddress -InterfaceAlias $b.AdapterName -ResetServerAddresses -ErrorAction Stop
+          Good "DNS reset to automatic (DHCP)"
+        }
+      } catch { Warn "DNS revert skipped: $($_.Exception.Message)" }
     }
     Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' `
       -Name 'NetworkThrottlingIndex' -Value ([int]$b.NetworkThrottlingIndex) -Type DWord -ErrorAction SilentlyContinue
@@ -730,6 +742,21 @@ if ($Revert) {
     if ($b.AutotuningLevel) { netsh int tcp set global autotuninglevel=$($b.AutotuningLevel) | Out-Null; Good "TCP autotuning restored" }
     if ($b.EcnCapability)   { netsh int tcp set global ecncapability=$($b.EcnCapability) | Out-Null; Good "TCP ECN restored to $($b.EcnCapability)" }
     if ($b.Timestamps)      { netsh int tcp set global timestamps=$($b.Timestamps) | Out-Null; Good "TCP timestamps restored to $($b.Timestamps)" }
+    if ($b.Rss)              { netsh int tcp set global rss=$($b.Rss) | Out-Null; Good "RSS restored to $($b.Rss)" }
+    # NIC power-saving - Apply/Auto disable this; restore whatever it was before.
+    if ($null -ne $b.NicPower -and $b.AdapterName) {
+      try {
+        Set-NetAdapterPowerManagement -Name $b.AdapterName -AllowComputerToTurnOffDevice $b.NicPower -NoRestart -ErrorAction Stop
+        Good "Adapter power-saving restored to $($b.NicPower)"
+      } catch { Warn "NIC power-saving revert skipped" }
+    }
+    # MTU - Apply may lower this; restore the original value.
+    if ($null -ne $b.Mtu -and $b.AdapterName) {
+      try {
+        netsh interface ipv4 set subinterface "$($b.AdapterName)" mtu=$($b.Mtu) store=persistent | Out-Null
+        Good "MTU restored to $($b.Mtu)"
+      } catch { Warn "MTU revert skipped" }
+    }
     # Reserved bandwidth - restore previous value, or remove policy entirely
     try {
       $qosKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched'
