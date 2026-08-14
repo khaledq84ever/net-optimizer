@@ -880,6 +880,54 @@ if ($Auto) {
     $fixes += [pscustomobject]@{ Name = 'Power-saver plan'; Detail = '-> High performance'; Action = { powercfg /setactive SCHEME_MIN 2>$null } }
   } else { Good "Power plan fine (not power-saver)" }
 
+  # 7) TCP ECN - Windows default is off; nearly all current routers/ISPs support it.
+  if ($state.Ecn -ne 'enabled' -and $state.Ecn -ne 'unknown') {
+    $fixes += [pscustomobject]@{ Name = "TCP ECN '$($state.Ecn)'"; Detail = '-> enabled'; Action = { netsh int tcp set global ecncapability=enabled | Out-Null } }
+  } else { Good "TCP ECN already enabled" }
+
+  # 8) TCP Timestamps - modern TCP doesn't need them; 12 bytes/packet overhead.
+  if ($state.Timestamps -ne 'disabled' -and $state.Timestamps -ne 'unknown') {
+    $fixes += [pscustomobject]@{ Name = "TCP Timestamps '$($state.Timestamps)'"; Detail = '-> disabled'; Action = { netsh int tcp set global timestamps=disabled | Out-Null } }
+  } else { Good "TCP Timestamps already off" }
+
+  # 9) Reserved bandwidth - Windows default reserves 20% of the NIC for QoS
+  #    that home PCs never use. $null means the policy key doesn't exist, i.e.
+  #    the implicit 20% default is in effect.
+  if ($null -eq $state.ReservedBandwidth -or $state.ReservedBandwidth -ne 0) {
+    $fixes += [pscustomobject]@{ Name = 'Reserved bandwidth'; Detail = "$(if ($null -eq $state.ReservedBandwidth) { '20% (default)' } else { "$($state.ReservedBandwidth)%" }) -> 0%"; Action = {
+        $qosKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched'
+        if (-not (Test-Path $qosKey)) { New-Item -Path $qosKey -Force | Out-Null }
+        Set-ItemProperty -Path $qosKey -Name 'NonBestEffortLimit' -Value 0 -Type DWord -Force
+      } }
+  } else { Good "Reserved bandwidth already 0%" }
+
+  # 10) Delivery Optimization upload cap - only set it if the user has never
+  #     configured one; don't override a cap they chose themselves.
+  if ($null -eq $state.DoMaxUpload) {
+    $fixes += [pscustomobject]@{ Name = 'Delivery Optimization uncapped'; Detail = '-> 20% upload cap'; Action = {
+        $doKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+        if (-not (Test-Path $doKey)) { New-Item -Path $doKey -Force | Out-Null }
+        Set-ItemProperty -Path $doKey -Name 'DOPercentageMaxBackgroundBandwidth' -Value 20 -Type DWord -Force
+      } }
+  } else { Good "Delivery Optimization already capped ($($state.DoMaxUpload)%)" }
+
+  # 11) Energy Efficient Ethernet - known cause of latency spikes/packet loss on
+  #     wired NICs. $null means the adapter doesn't expose the property (most
+  #     Wi-Fi cards) - nothing to fix there.
+  if ($state.Eee -eq 'Enabled' -and $state.Adapter) {
+    $fixes += [pscustomobject]@{ Name = 'Energy Efficient Ethernet ON'; Detail = "'$($state.Adapter.Name)' -> disabled"; Action = {
+        $eeeProp = Get-NetAdapterAdvancedProperty -Name $state.Adapter.Name -ErrorAction SilentlyContinue |
+                   Where-Object DisplayName -match 'Energy.Efficient.Ethernet|Green.Ethernet' | Select-Object -First 1
+        if ($eeeProp) { Set-NetAdapterAdvancedProperty -Name $state.Adapter.Name -DisplayName $eeeProp.DisplayName -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop }
+      }.GetNewClosure() }
+  } elseif ($state.Eee) { Good "EEE already off" }
+
+  # 12) Optimal MTU - only if clearly below the 1500 default (same guard as -Apply).
+  $autoMtu = Get-OptimalMtu
+  if ($autoMtu -and $autoMtu -lt 1500 -and $autoMtu -ge 1400 -and $state.Adapter) {
+    $fixes += [pscustomobject]@{ Name = 'Suboptimal MTU'; Detail = "-> $autoMtu"; Action = { netsh interface ipv4 set subinterface "$($state.Adapter.Name)" mtu=$autoMtu store=persistent | Out-Null }.GetNewClosure() }
+  } elseif ($autoMtu) { Good "MTU already optimal ($autoMtu)" }
+
   # Things a script genuinely can't fix - report honestly.
   if ($before.Ping.LossPct -ge 2) { Warn "Packet loss ~$($before.Ping.LossPct)% - usually Wi-Fi signal or ISP. Move closer to the router or go wired." }
   if ($before.Ping.AvgMs -ne $null -and $before.Ping.AvgMs -gt 80) { Warn "High ping ($($before.Ping.AvgMs) ms) - mostly distance/ISP; the fixes above help a little." }
@@ -1025,7 +1073,7 @@ try {
 # 12) Flush DNS so the new resolver takes effect immediately
 ipconfig /flushdns | Out-Null; Good "Flushed DNS cache"
 
-# 8) Optional latency tweak for gaming/voice (disable Nagle)
+# 13) Optional latency tweak for gaming/voice (disable Nagle)
 if ($Gaming -and $ad) {
   try {
     $guid = (Get-NetAdapter -Name $ad.Name).InterfaceGuid
